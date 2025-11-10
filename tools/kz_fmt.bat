@@ -6,7 +6,7 @@ REM 许可证：木兰2.0（Mulan PSL v2）
 REM 检查kz编译器是否存在
 where kzc >nul 2>nul
 if %errorlevel% neq 0 (
-    echo 错误：未找到Kz编译器 (kzc)
+    echo 错误：未找到Kz编译器 (kz cl)
     echo 请确保kzc已安装并添加到PATH环境变量中
     exit /b 1
 )
