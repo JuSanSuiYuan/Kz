@@ -1,0 +1,209 @@
+/*
+ * Kz语言 - MLIR优化示例
+ * 许可证：木兰2.0（Mulan PSL v2）
+ * 行尾序列：LF（\n）
+ */
+
+// 导入必要的模块
+import std.io;
+import std.math;
+import std.container;
+import std.time;
+import mlir.optimize;
+
+// 定义MLIR优化注解
+注解 mlir_optimize(passes: string[]) {
+    // 此注解用于指导MLIR优化器应用特定的优化通道
+}
+
+// 使用MLIR优化的向量加法函数
+@mlir_optimize(["canonicalize", "cse", "vectorize", "affine-loop-fusion"])
+函数 向量加法优化(向量a: [f64], 向量b: [f64]): [f64] {
+    设 结果长度 = 向量a.长度();
+    设 结果 = [f64; 结果长度];
+    
+    for i in 0..<结果长度 {
+        结果[i] = 向量a[i] + 向量b[i];
+    }
+    
+    返回 结果;
+}
+
+// 未优化的向量加法函数（用于比较）
+函数 向量加法未优化(向量a: [f64], 向量b: [f64]): [f64] {
+    设 结果长度 = 向量a.长度();
+    设 结果 = [f64; 结果长度];
+    
+    for i in 0..<结果长度 {
+        结果[i] = 向量a[i] + 向量b[i];
+    }
+    
+    返回 结果;
+}
+
+// 使用MLIR优化的矩阵乘法
+@mlir_optimize(["canonicalize", "cse", "loop-opt", "vectorize", "affine-loop-tile"])
+函数 矩阵乘法优化(矩阵a: [[f64]], 矩阵b: [[f64]]): [[f64]] {
+    设 m = 矩阵a.长度();
+    设 n = 矩阵b.长度();
+    设 p = 矩阵b[0].长度();
+    
+    设 结果 = [[f64; p]; m];
+    
+    for i in 0..<m {
+        for j in 0..<p {
+            结果[i][j] = 0.0;
+            for k in 0..<n {
+                结果[i][j] += 矩阵a[i][k] * 矩阵b[k][j];
+            }
+        }
+    }
+    
+    返回 结果;
+}
+
+// 使用MLIR优化的三进制转换函数
+@mlir_optimize(["canonicalize", "cse", "sccp"])
+函数 十进制转三进制(数字: i32): string {
+    if 数字 == 0 {
+        返回 "0";
+    }
+    
+    设 结果 = string[];
+    设 剩余 = 数字;
+    
+    while 剩余 != 0 {
+        设 余数 = 剩余 % 3;
+        剩余 = 剩余 / 3;
+        
+        match 余数 {
+            0 => 结果.append("0"),
+            1 => 结果.append("1"),
+            2 => {
+                结果.append("T");
+                剩余 += 1;
+            },
+            _ => {}
+        }
+    }
+    
+    结果.reverse();
+    return 结果.join("");
+}
+
+// 使用MLIR的自定义优化通道
+函数 配置自定义mlir优化(): void {
+    mlir.configure_pipeline([
+        "-canonicalize",
+        "-cse",
+        "-loop-opt",
+        "-vectorize",
+        "-affine-loop-tile",
+        "-linalg-bufferize",
+        "-tensor-bufferize",
+        "-func-bufferize",
+        "-buffer-deallocation",
+        "-convert-linalg-to-llvm",
+        "-convert-memref-to-llvm",
+        "-convert-func-to-llvm",
+        "-reconcile-unrealized-casts"
+    ]);
+    
+    io.println("已配置自定义MLIR优化通道");
+}
+
+// 性能比较测试
+函数 性能比较(): void {
+    设 向量大小 = 10000000;
+    设 向量a = [f64; 向量大小];
+    设 向量b = [f64; 向量大小];
+    
+    // 初始化向量
+    for i in 0..<向量大小 {
+        向量a[i] = i as f64 * 0.1;
+        向量b[i] = (向量大小 - i) as f64 * 0.2;
+    }
+    
+    // 测试未优化版本
+    设 开始时间 = time.now();
+    向量加法未优化(向量a, 向量b);
+    设 结束时间 = time.now();
+    设 未优化时间 = time.duration(开始时间, 结束时间) as f64;
+    io.println(f"未优化向量加法耗时: {未优化时间} 秒");
+    
+    // 测试优化版本
+    开始时间 = time.now();
+    向量加法优化(向量a, 向量b);
+    结束时间 = time.now();
+    设 优化时间 = time.duration(开始时间, 结束时间) as f64;
+    io.println(f"MLIR优化向量加法耗时: {优化时间} 秒");
+    
+    io.println(f"性能提升: {(未优化时间 / 优化时间):.2f}x");
+}
+
+// 使用MLIR优化的图像卷积
+@mlir_optimize(["canonicalize", "cse", "vectorize", "affine-loop-fusion", "affine-loop-tile"])
+函数 图像卷积(图像: [[f64]], 卷积核: [[f64]]): [[f64]] {
+    设 图像高度 = 图像.长度();
+    设 图像宽度 = 图像[0].长度();
+    设 核大小 = 卷积核.长度();
+    设 半核 = 核大小 / 2;
+    
+    设 结果 = [[f64; 图像宽度]; 图像高度];
+    
+    for i in 0..<图像高度 {
+        for j in 0..<图像宽度 {
+            设 总和 = 0.0;
+            
+            for ki in 0..<核大小 {
+                for kj in 0..<核大小 {
+                    设 ii = i + ki - 半核;
+                    设 jj = j + kj - 半核;
+                    
+                    if ii >= 0 && ii < 图像高度 && jj >= 0 && jj < 图像宽度 {
+                        总和 += 图像[ii][jj] * 卷积核[ki][kj];
+                    }
+                }
+            }
+            
+            结果[i][j] = 总和;
+        }
+    }
+    
+    返回 结果;
+}
+
+// 主函数
+函数 主(): i32 {
+    // 配置自定义MLIR优化
+    配置自定义mlir优化();
+    
+    // 执行性能比较
+    io.println("开始性能比较测试...");
+    性能比较();
+    
+    // 测试三进制转换
+    设 测试数字 = 42;
+    设 三进制表示 = 十进制转三进制(测试数字);
+    io.println(f"十进制 {测试数字} 的平衡三进制表示为: {三进制表示}");
+    
+    // 测试矩阵乘法
+    设 小矩阵a = [[1.0, 2.0], [3.0, 4.0]];
+    设 小矩阵b = [[5.0, 6.0], [7.0, 8.0]];
+    设 矩阵结果 = 矩阵乘法优化(小矩阵a, 小矩阵b);
+    
+    io.println("矩阵乘法结果:");
+    for 行 in 矩阵结果 {
+        io.println(行);
+    }
+    
+    // 打印MLIR优化信息
+    io.println("\nMLIR优化特性:");
+    io.println("1. 循环向量化 - 利用SIMD指令并行处理数据");
+    io.println("2. 循环融合 - 减少内存访问，提高缓存命中率");
+    io.println("3. 循环分块 - 优化内存层次访问模式");
+    io.println("4. 常量折叠 - 在编译时计算常量表达式");
+    io.println("5. 死代码消除 - 移除不会执行的代码");
+    
+    返回 0;
+}

@@ -1,0 +1,242 @@
+/*
+ * Kz语言 - Mold链接器使用示例
+ * 许可证：木兰2.0（Mulan PSL v2）
+ * 行尾序列：LF（\n）
+ */
+
+// 导入必要的模块
+import std.io;
+import std.process;
+import std.container;
+import std.time;
+
+// 定义链接器配置结构体
+结构体 链接器配置 {
+    使用_mold: bool = true,
+    mold_path: string = "mold",
+    优化级别: string = "O2",
+    启用_lto: bool = true,
+    链接器标志: [string] = ["-O2", "-flto"],
+    输出文件: string = "output.exe",
+    库路径: [string] = [],
+    链接库: [string] = []
+}
+
+// 配置Mold链接器的函数
+函数 配置mold链接器(config: 链接器配置): void {
+    io.println("配置Mold链接器...");
+    io.println(f"使用Mold: {config.使用_mold}");
+    
+    if config.使用_mold {
+        io.println(f"Mold路径: {config.mold_path}");
+        io.println(f"优化级别: {config.优化级别}");
+        io.println(f"启用LTO: {config.启用_lto}");
+        io.println("链接器标志:");
+        for 标志 in config.链接器标志 {
+            io.println(f"  - {标志}");
+        }
+        
+        // 在实际编译中，这些配置会被传递给构建系统
+    }
+}
+
+// 模拟链接过程并比较时间
+函数 比较链接时间(源文件数量: i32): void {
+    io.println(f"\n比较链接 {源文件数量} 个源文件的时间:");
+    
+    // 模拟常规链接器时间（随文件数量增长）
+    设 常规链接时间 = 0.5 + (源文件数量 * 0.01) + (源文件数量 * 源文件数量 * 0.00001);
+    
+    // 模拟Mold链接器时间（增长较慢）
+    设 mold链接时间 = 0.1 + (源文件数量 * 0.002) + (源文件数量 * 源文件数量 * 0.000001);
+    
+    io.println(f"常规链接器: {常规链接时间:.3f} 秒");
+    io.println(f"Mold链接器: {mold链接时间:.3f} 秒");
+    io.println(f"速度提升: {(常规链接时间 / mold链接时间):.2f}x");
+}
+
+// 生成模拟的构建命令
+函数 生成构建命令(config: 链接器配置, 源文件: [string]): string {
+    设 命令 = string[];
+    
+    命令.append("kzc"); // Kz编译器
+    
+    // 添加源文件
+    for 文件 in 源文件 {
+        命令.append(文件);
+    }
+    
+    // 添加输出文件
+    命令.append(f"-o {config.输出文件}");
+    
+    // 添加优化标志
+    命令.append(f"-{config.优化级别}");
+    
+    // 添加LTO标志
+    if config.启用_lto {
+        命令.append("-flto");
+    }
+    
+    // 配置使用Mold链接器
+    if config.使用_mold {
+        命令.append(f"--linker={config.mold_path}");
+    }
+    
+    // 添加额外的链接器标志
+    for 标志 in config.链接器标志 {
+        命令.append(标志);
+    }
+    
+    // 添加库路径
+    for 路径 in config.库路径 {
+        命令.append(f"-L{路径}");
+    }
+    
+    // 添加链接库
+    for 库 in config.链接库 {
+        命令.append(f"-l{库}");
+    }
+    
+    return 命令.join(" ");
+}
+
+// 多模块项目链接示例
+函数 多模块项目示例(): void {
+    io.println("\n多模块项目链接示例:");
+    
+    // 模拟大型项目的源文件结构
+    设 核心模块 = [
+        "src/core/types.kz",
+        "src/core/memory.kz",
+        "src/core/string.kz",
+        "src/core/container.kz"
+    ];
+    
+    设 数学模块 = [
+        "src/math/arithmetic.kz",
+        "src/math/linear_algebra.kz",
+        "src/math/trinary.kz",
+        "src/math/complex.kz"
+    ];
+    
+    设 并发模块 = [
+        "src/concurrent/actor.kz",
+        "src/concurrent/channel.kz",
+        "src/concurrent/future.kz",
+        "src/concurrent/mutex.kz"
+    ];
+    
+    设 所有源文件 = [..核心模块, ..数学模块, ..并发模块, "src/main.kz"];
+    
+    // 配置链接器
+    设 config = 链接器配置 {
+        优化级别: "O3",
+        启用_lto: true,
+        链接器标志: ["-O3", "-flto", "-pthread"],
+        输出文件: "kz_app.exe",
+        库路径: ["lib"],
+        链接库: ["std", "trinary", "mlir"]
+    };
+    
+    // 生成构建命令
+    设 构建命令 = 生成构建命令(config, 所有源文件);
+    io.println("构建命令:");
+    io.println(构建命令);
+    
+    // 比较链接时间
+    比较链接时间(所有源文件.长度());
+}
+
+// 链接器优化策略示例
+函数 链接器优化策略(): void {
+    io.println("\n链接器优化策略:");
+    
+    io.println("1. 链接时优化 (LTO):");
+    io.println("   - 跨模块内联函数");
+    io.println("   - 消除未使用的代码和数据");
+    io.println("   - 优化跨模块常量传播");
+    
+    io.println("\n2. Mold特定优化:");
+    io.println("   - 并行符号解析");
+    io.println("   - 增量链接支持");
+    io.println("   - 内存高效的数据结构");
+    io.println("   - 快速哈希表查找");
+    
+    io.println("\n3. 推荐的链接器标志组合:");
+    io.println("   - 开发模式: -O0 -g");
+    io.println("   - 调试模式: -O1 -g -flto=thin");
+    io.println("   - 发布模式: -O2 -flto -s");
+    io.println("   - 性能模式: -O3 -march=native -flto=full");
+}
+
+// 创建链接脚本示例
+函数 生成链接脚本(): void {
+    io.println("\n链接脚本示例 (linker.ld):");
+    
+    设 链接脚本内容 = 
+`ENTRY(main)
+
+SECTIONS {
+    . = 0x400000;
+    
+    .text : {
+        *(.text)
+        *(.text.*)
+    }
+    
+    .rodata : {
+        *(.rodata)
+        *(.rodata.*)
+    }
+    
+    .data : {
+        *(.data)
+        *(.data.*)
+    }
+    
+    .bss : {
+        *(.bss)
+        *(.bss.*)
+    }
+    
+    .debug_info : { *(.debug_info) }
+    .debug_line : { *(.debug_line) }
+}`;
+    
+    io.println(链接脚本内容);
+    io.println("\n使用方法: kzc --linker-script=linker.ld ...");
+}
+
+// 主函数
+函数 主(): i32 {
+    // 基本链接器配置
+    设 基本配置 = 链接器配置 {
+        优化级别: "O2",
+        启用_lto: true
+    };
+    
+    配置mold链接器(基本配置);
+    
+    // 比较不同规模项目的链接时间
+    比较链接时间(10);  // 小型项目
+    比较链接时间(100); // 中型项目
+    比较链接时间(1000); // 大型项目
+    
+    // 多模块项目示例
+    多模块项目示例();
+    
+    // 链接器优化策略
+    链接器优化策略();
+    
+    // 生成链接脚本示例
+    生成链接脚本();
+    
+    io.println("\nMold链接器优势总结:");
+    io.println("- 极快的链接速度，特别是在大型项目中");
+    io.println("- 对大型代码库的增量构建支持");
+    io.println("- 与现有构建系统的无缝集成");
+    io.println("- 支持所有主流平台和目标架构");
+    io.println("- 与LTO（链接时优化）的良好配合");
+    
+    返回 0;
+}

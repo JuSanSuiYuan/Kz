@@ -1,0 +1,210 @@
+# Kz语言Actor模型与C3模块化示例
+# 许可证: MulanPSL-2.0
+# 行尾序列: LF
+
+# 导入必要的模块
+import actor
+import concurrent
+import memory
+import math
+
+# 定义消息类型（使用中文关键字"令"定义常量）
+令 Message = enum {
+    计算加法(a: int, b: int),
+    计算乘法(a: int, b: int),
+    计算幂(a: int, b: int),
+    获取结果
+}
+
+# 定义Calculator接口（C3模块化）
+interface Calculator {
+    fn 计算(a: int, b: int) -> int
+}
+
+# 定义加法计算器实现
+class AddCalculator implements Calculator {
+    fn 计算(a: int, b: int) -> int {
+        # 使用内联汇编优化加法操作
+        asm {
+            mov rax, a
+            add rax, b
+            # 结果保存在rax中返回
+        }
+    }
+}
+
+# 定义乘法计算器实现
+class MultiplyCalculator implements Calculator {
+    fn 计算(a: int, b: int) -> int {
+        # 使用内联汇编优化乘法操作
+        asm {
+            mov rax, a
+            imul rax, b
+            # 结果保存在rax中返回
+        }
+    }
+}
+
+# 定义高级计算器（C3多重继承）
+class AdvancedCalculator implements Calculator, memory.Poolable {
+    设 result: int
+    设 add_calc: AddCalculator
+    设 mult_calc: MultiplyCalculator
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        this.result = 0
+        this.add_calc = AddCalculator{}
+        this.mult_calc = MultiplyCalculator{}
+        return this
+    }
+    
+    fn 计算(a: int, b: int) -> int {
+        return this.add_calc.计算(a, b)
+    }
+    
+    fn 计算乘法(a: int, b: int) -> int {
+        return this.mult_calc.计算(a, b)
+    }
+    
+    fn 计算幂(a: int, b: int) -> int {
+        # 递归计算幂
+        if b == 0: 
+            return 1
+        设 result = a
+        for i in 1..b:
+            result = this.mult_calc.计算(result, a)
+        return result
+    }
+    
+    # 实现Poolable接口
+    fn 从池获取() -> void {
+        this.result = 0
+    }
+    
+    fn 归还到池() -> void {
+        # 清理资源
+    }
+}
+
+# 定义CalculatorActor（Actor模型）
+class CalculatorActor {
+    令 name: string
+    令 calculator: AdvancedCalculator
+    令 memory_pool: memory.ObjectPool<AdvancedCalculator>
+    
+    fn 初始化(name: string) -> Self {
+        设 this = Self{}
+        this.name = name
+        # 创建内存池管理计算器对象
+        this.memory_pool = memory.create_object_pool<AdvancedCalculator>(
+            initial_size: 10,
+            max_size: 100,
+            factory_fn: fn() -> AdvancedCalculator {
+                return AdvancedCalculator{}.初始化()
+            }
+        )
+        this.calculator = this.memory_pool.allocate()
+        return this
+    }
+    
+    # Actor消息处理函数
+    fn 处理消息(message: Message) -> int? {
+        match message {
+            Message.计算加法(a, b):
+                this.calculator.result = this.calculator.计算(a, b)
+                return this.calculator.result
+            Message.计算乘法(a, b):
+                this.calculator.result = this.calculator.计算乘法(a, b)
+                return this.calculator.result
+            Message.计算幂(a, b):
+                this.calculator.result = this.calculator.计算幂(a, b)
+                return this.calculator.result
+            Message.获取结果:
+                return this.calculator.result
+        }
+    }
+    
+    fn 销毁() -> void {
+        # 归还对象到内存池
+        this.memory_pool.deallocate(this.calculator)
+        this.memory_pool.destroy()
+    }
+}
+
+# 创建Actor系统
+fn 创建计算器系统() -> actor.System {
+    令 system = actor.new_system()
+    return system
+}
+
+# 定义监督策略
+fn 计算器监督策略() -> actor.SupervisorStrategy {
+    return actor.SupervisorStrategy.restart_on_failure(
+        max_restarts: 3,
+        within_time_window: 1000
+    )
+}
+
+# 创建GPU显存池示例
+fn 创建显存池() -> gpu.MemoryPool {
+    设 pool = gpu.create_memory_pool(
+        initial_size: 1024 * 1024 * 16,  # 16MB
+        block_size: 64,
+        enable_pinning: true
+    )
+    return pool
+}
+
+# 主函数
+fn main() -> int {
+    # 输出程序信息
+    print("Kz语言新特性示例程序")
+    print("1. Actor模型与C3模块化")
+    print("2. 内联汇编支持")
+    print("3. 中文关键字 '设'(var) 和 '令'(let)")
+    print("4. 池化内存和池化显存")
+    print("-------------------------")
+    
+    # 创建Actor系统
+    设 system = 创建计算器系统()
+    
+    # 创建监督者
+    设 supervisor = system.create_supervisor(
+        name: "CalculatorSupervisor",
+        strategy: 计算器监督策略()
+    )
+    
+    # 创建CalculatorActor
+    设 calculator = CalculatorActor{}.初始化(name: "MainCalculator")
+    
+    # 测试消息处理
+    print("\n测试消息处理:")
+    
+    令 add_result = calculator.处理消息(Message.计算加法(a: 5, b: 3))
+    print(f"5 + 3 = {add_result}")
+    
+    令 mult_result = calculator.处理消息(Message.计算乘法(a: 5, b: 3))
+    print(f"5 * 3 = {mult_result}")
+    
+    令 power_result = calculator.处理消息(Message.计算幂(a: 5, b: 3))
+    print(f"5 ^ 3 = {power_result}")
+    
+    # 测试GPU显存池
+    print("\n初始化GPU显存池:")
+    设 gpu_pool = 创建显存池()
+    print("GPU显存池创建成功，大小: 16MB")
+    
+    # 测试C3模块化多重继承
+    print("\n测试C3模块化:")
+    设 advanced = AdvancedCalculator{}.初始化()
+    print(f"使用Calculator接口计算: 10 + 20 = {advanced.计算(10, 20)}")
+    
+    # 清理资源
+    calculator.销毁()
+    gpu_pool.destroy()
+    system.shutdown()
+    
+    print("\n程序执行完成，资源已释放")
+    return 0
+}

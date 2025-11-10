@@ -1,0 +1,617 @@
+/*
+ * Kz语言 - 忆阻器操作支持示例
+ * 许可证：木兰2.0（Mulan PSL v2）
+ * 行尾序列：LF（\n）
+ */
+
+// 导入必要的模块
+import std.io;
+import std.memory;
+import std.container;
+import std.math;
+import hardware.memristor;
+import hardware.bus;
+import concurrent.lock;
+
+// 忆阻器设备接口
+接口 MemristorDevice {
+    函数 读电阻(地址: i32): f64;
+    函数 写电阻(地址: i32, 电压: f64, 时间: f64): void;
+    函数 重置(地址: i32): void;
+    函数 批量操作(操作列表: [[i32, f64, f64]]): void;
+    函数 获取状态(地址: i32): MemristorState;
+}
+
+// 忆阻器状态结构体
+结构体 MemristorState {
+    当前电阻: f64;
+    最小电阻: f64;
+    最大电阻: f64;
+    历史电荷: f64;
+    上次操作时间: f64;
+    状态: MemristorStatus;
+}
+
+// 忆阻器状态枚举
+枚举 MemristorStatus {
+    空闲,
+    操作中,
+    饱和低阻,
+    饱和高阻,
+    错误
+}
+
+// 实际的忆阻器设备类
+类 PhysicalMemristorDevice implements MemristorDevice {
+    私有 设备地址: i32;
+    私有 设备总线: DeviceBus;
+    私有 锁: Mutex;
+    私有 设备信息: DeviceInfo;
+    
+    构造函数(设备地址: i32, 总线类型: BusType = BusType.SPI) {
+        this.设备地址 = 设备地址;
+        this.设备总线 = DeviceBus::new(总线类型);
+        this.锁 = Mutex::new();
+        this.设备信息 = 初始化设备();
+    }
+    
+    // 初始化设备
+    私有 函数 初始化设备(): DeviceInfo {
+        设备总线.open(设备地址);
+        令 设备ID = 设备总线.read_register(0x00);
+        令 版本号 = 设备总线.read_register(0x01);
+        令 容量 = 设备总线.read_register(0x02) << 16 | 设备总线.read_register(0x03);
+        
+        return DeviceInfo {
+            设备ID: 设备ID,
+            版本号: 版本号,
+            容量: 容量,
+            厂商: "Kz Memristor Technologies",
+            支持特性: ["并行读写", "神经形态计算", "低功耗模式"]
+        };
+    }
+    
+    // 实现读电阻接口
+    函数 读电阻(地址: i32): f64 {
+        锁.lock();
+        defer 锁.unlock();
+        
+        if 地址 < 0 || 地址 >= 设备信息.容量 {
+            throw Error::new("Invalid memristor address");
+        }
+        
+        // 发送读命令
+        设备总线.write_register(0x10, 0x01); // 读命令
+        设备总线.write_register(0x11, (地址 >> 16) & 0xFF);
+        设备总线.write_register(0x12, (地址 >> 8) & 0xFF);
+        设备总线.write_register(0x13, 地址 & 0xFF);
+        设备总线.write_register(0x14, 0x01); // 执行
+        
+        // 读取结果
+        令 高位 = 设备总线.read_register(0x20);
+        令 低位 = 设备总线.read_register(0x21);
+        令 状态 = 设备总线.read_register(0x22);
+        
+        if (状态 & 0x80) != 0 {
+            throw Error::new("Read operation failed");
+        }
+        
+        return (高位 << 8 | 低位) as f64 * 0.1; // 转换为实际电阻值
+    }
+    
+    // 实现写电阻接口
+    函数 写电阻(地址: i32, 电压: f64, 时间: f64): void {
+        锁.lock();
+        defer 锁.unlock();
+        
+        if 地址 < 0 || 地址 >= 设备信息.容量 {
+            throw Error::new("Invalid memristor address");
+        }
+        
+        // 限制电压范围
+        令 安全电压 = clamp(电压, -5.0, 5.0);
+        令 电压编码 = ((安全电压 + 5.0) / 10.0 * 65535) as i32;
+        
+        // 限制时间范围
+        令 安全时间 = clamp(时间, 0.001, 100.0);
+        令 时间编码 = (安全时间 * 1000) as i32; // 转换为毫秒
+        
+        // 发送写命令
+        设备总线.write_register(0x10, 0x02); // 写命令
+        设备总线.write_register(0x11, (地址 >> 16) & 0xFF);
+        设备总线.write_register(0x12, (地址 >> 8) & 0xFF);
+        设备总线.write_register(0x13, 地址 & 0xFF);
+        设备总线.write_register(0x15, (电压编码 >> 8) & 0xFF);
+        设备总线.write_register(0x16, 电压编码 & 0xFF);
+        设备总线.write_register(0x17, (时间编码 >> 8) & 0xFF);
+        设备总线.write_register(0x18, 时间编码 & 0xFF);
+        设备总线.write_register(0x14, 0x01); // 执行
+        
+        // 等待操作完成
+        while (设备总线.read_register(0x22) & 0x40) != 0 {
+            // 忙等待
+        }
+        
+        令 状态 = 设备总线.read_register(0x22);
+        if (状态 & 0x80) != 0 {
+            throw Error::new("Write operation failed");
+        }
+    }
+    
+    // 实现重置接口
+    函数 重置(地址: i32): void {
+        锁.lock();
+        defer 锁.unlock();
+        
+        if 地址 < 0 || 地址 >= 设备信息.容量 {
+            throw Error::new("Invalid memristor address");
+        }
+        
+        // 发送重置命令
+        设备总线.write_register(0x10, 0x03); // 重置命令
+        设备总线.write_register(0x11, (地址 >> 16) & 0xFF);
+        设备总线.write_register(0x12, (地址 >> 8) & 0xFF);
+        设备总线.write_register(0x13, 地址 & 0xFF);
+        设备总线.write_register(0x14, 0x01); // 执行
+        
+        // 等待操作完成
+        while (设备总线.read_register(0x22) & 0x40) != 0 {
+            // 忙等待
+        }
+        
+        令 状态 = 设备总线.read_register(0x22);
+        if (状态 & 0x80) != 0 {
+            throw Error::new("Reset operation failed");
+        }
+    }
+    
+    // 实现批量操作接口
+    函数 批量操作(操作列表: [[i32, f64, f64]]): void {
+        锁.lock();
+        defer 锁.unlock();
+        
+        if 操作列表.长度() > 256 {
+            throw Error::new("Batch operation too large");
+        }
+        
+        // 发送批量操作命令
+        设备总线.write_register(0x10, 0x04); // 批量命令
+        设备总线.write_register(0x19, 操作列表.长度() as u8);
+        
+        // 发送操作数据
+        for i in 0..<操作列表.长度() {
+            令 [地址, 电压, 时间] = 操作列表[i];
+            
+            // 限制范围
+            令 安全电压 = clamp(电压, -5.0, 5.0);
+            令 电压编码 = ((安全电压 + 5.0) / 10.0 * 65535) as i32;
+            令 安全时间 = clamp(时间, 0.001, 100.0);
+            令 时间编码 = (安全时间 * 1000) as i32;
+            
+            设备总线.write_register(0x30 + i * 8 + 0, (地址 >> 16) & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 1, (地址 >> 8) & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 2, 地址 & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 3, (电压编码 >> 8) & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 4, 电压编码 & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 5, (时间编码 >> 8) & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 6, 时间编码 & 0xFF);
+            设备总线.write_register(0x30 + i * 8 + 7, 0x01); // 有效标志
+        }
+        
+        // 执行批量操作
+        设备总线.write_register(0x14, 0x01);
+        
+        // 等待完成
+        while (设备总线.read_register(0x22) & 0x40) != 0 {
+            // 忙等待
+        }
+    }
+    
+    // 实现获取状态接口
+    函数 获取状态(地址: i32): MemristorState {
+        锁.lock();
+        defer 锁.unlock();
+        
+        if 地址 < 0 || 地址 >= 设备信息.容量 {
+            throw Error::new("Invalid memristor address");
+        }
+        
+        // 读取状态寄存器
+        设备总线.write_register(0x10, 0x05); // 状态命令
+        设备总线.write_register(0x11, (地址 >> 16) & 0xFF);
+        设备总线.write_register(0x12, (地址 >> 8) & 0xFF);
+        设备总线.write_register(0x13, 地址 & 0xFF);
+        设备总线.write_register(0x14, 0x01);
+        
+        // 读取状态数据
+        令 当前电阻高 = 设备总线.read_register(0x40);
+        令 当前电阻低 = 设备总线.read_register(0x41);
+        令 最小电阻高 = 设备总线.read_register(0x42);
+        令 最小电阻低 = 设备总线.read_register(0x43);
+        令 最大电阻高 = 设备总线.read_register(0x44);
+        令 最大电阻低 = 设备总线.read_register(0x45);
+        令 历史电荷高 = 设备总线.read_register(0x46);
+        令 历史电荷低 = 设备总线.read_register(0x47);
+        令 状态字节 = 设备总线.read_register(0x48);
+        
+        // 解析状态
+        令 状态 = match (状态字节 & 0x0F) {
+            0x00 => MemristorStatus.空闲,
+            0x01 => MemristorStatus.操作中,
+            0x02 => MemristorStatus.饱和低阻,
+            0x03 => MemristorStatus.饱和高阻,
+            _ => MemristorStatus.错误
+        };
+        
+        return MemristorState {
+            当前电阻: (当前电阻高 << 8 | 当前电阻低) as f64 * 0.1,
+            最小电阻: (最小电阻高 << 8 | 最小电阻低) as f64 * 0.1,
+            最大电阻: (最大电阻高 << 8 | 最大电阻低) as f64 * 0.1,
+            历史电荷: (历史电荷高 << 8 | 历史电荷低) as f64 * 0.001,
+            上次操作时间: 0.0,
+            状态: 状态
+        };
+    }
+    
+    // 私有辅助函数
+    私有 函数 clamp<T>(值: T, 最小值: T, 最大值: T): T {
+        if 值 < 最小值 {
+            return 最小值;
+        } else if 值 > 最大值 {
+            return 最大值;
+        } else {
+            return 值;
+        }
+    }
+    
+    // 析构函数
+    析构函数() {
+        设备总线.close();
+    }
+}
+
+// 忆阻器模拟器（用于测试和开发）
+类 MemristorSimulator implements MemristorDevice {
+    私有 模拟阵列: [MemristorCell];
+    私有 容量: i32;
+    
+    构造函数(容量: i32 = 1024) {
+        this.容量 = 容量;
+        this.模拟阵列 = [MemristorCell; 容量];
+        
+        // 初始化模拟单元
+        for i in 0..<容量 {
+            模拟阵列[i] = MemristorCell::new();
+        }
+    }
+    
+    // 模拟读电阻
+    函数 读电阻(地址: i32): f64 {
+        if 地址 < 0 || 地址 >= 容量 {
+            throw Error::new("Invalid address");
+        }
+        
+        return 模拟阵列[地址].read_resistance();
+    }
+    
+    // 模拟写电阻
+    函数 写电阻(地址: i32, 电压: f64, 时间: f64): void {
+        if 地址 < 0 || 地址 >= 容量 {
+            throw Error::new("Invalid address");
+        }
+        
+        模拟阵列[地址].apply_voltage(电压, 时间);
+    }
+    
+    // 模拟重置
+    函数 重置(地址: i32): void {
+        if 地址 < 0 || 地址 >= 容量 {
+            throw Error::new("Invalid address");
+        }
+        
+        模拟阵列[地址].reset();
+    }
+    
+    // 模拟批量操作
+    函数 批量操作(操作列表: [[i32, f64, f64]]): void {
+        for 操作 in 操作列表 {
+            令 [地址, 电压, 时间] = 操作;
+            写电阻(地址, 电压, 时间);
+        }
+    }
+    
+    // 模拟获取状态
+    函数 获取状态(地址: i32): MemristorState {
+        if 地址 < 0 || 地址 >= 容量 {
+            throw Error::new("Invalid address");
+        }
+        
+        令 单元 = 模拟阵列[地址];
+        
+        return MemristorState {
+            当前电阻: 单元.read_resistance(),
+            最小电阻: 单元.get_min_resistance(),
+            最大电阻: 单元.get_max_resistance(),
+            历史电荷: 单元.get_history_charge(),
+            上次操作时间: 单元.get_last_operation_time(),
+            状态: 单元.get_status()
+        };
+    }
+    
+    // 模拟单个忆阻器单元
+    类 MemristorCell {
+        私有 R_on: f64 = 100.0;      // 低阻态电阻
+        私有 R_off: f64 = 10000.0;   // 高阻态电阻
+        私有 D: f64 = 10.0e-9;       // 器件厚度
+        私有 mu_v: f64 = 1.0e-14;    // 离子迁移率
+        私有 w: f64 = 5.0e-9;        // 初始导电丝宽度
+        私有 q_history: f64 = 0.0;   // 历史电荷量
+        私有 last_time: f64 = 0.0;   // 上次操作时间
+        私有 status: MemristorStatus = MemristorStatus.空闲;
+        
+        构造函数() {
+            // 初始化为中间电阻值
+        }
+        
+        函数 read_resistance(): f64 {
+            令 w_norm = w / D;
+            令 R = R_on * w_norm + R_off * (1.0 - w_norm);
+            return R;
+        }
+        
+        函数 apply_voltage(voltage: f64, time: f64): void {
+            status = MemristorStatus.操作中;
+            
+            // 根据电压极性和大小改变导电丝宽度
+            令 dw = mu_v * voltage * time / D;
+            w += dw;
+            
+            // 限制在物理范围内
+            if w < 0.0 {
+                w = 0.0;
+                status = MemristorStatus.饱和高阻;
+            } else if w > D {
+                w = D;
+                status = MemristorStatus.饱和低阻;
+            } else {
+                status = MemristorStatus.空闲;
+            }
+            
+            // 更新历史电荷和时间
+            令 current = voltage / read_resistance();
+            q_history += current * time;
+            last_time = time.now() as f64;
+        }
+        
+        函数 reset(): void {
+            w = 5.0e-9; // 重置为初始状态
+            q_history = 0.0;
+            status = MemristorStatus.空闲;
+        }
+        
+        函数 get_min_resistance(): f64 {
+            return R_on;
+        }
+        
+        函数 get_max_resistance(): f64 {
+            return R_off;
+        }
+        
+        函数 get_history_charge(): f64 {
+            return q_history;
+        }
+        
+        函数 get_last_operation_time(): f64 {
+            return last_time;
+        }
+        
+        函数 get_status(): MemristorStatus {
+            return status;
+        }
+    }
+}
+
+// 忆阻器神经网络层（演示应用）
+类 MemristorNeuralLayer {
+    私有 weights: MemristorDevice;
+    私有 input_size: i32;
+    私有 output_size: i32;
+    私有 weight_base: i32;
+    
+    构造函数(weights: MemristorDevice, input_size: i32, output_size: i32, weight_base: i32 = 0) {
+        this.weights = weights;
+        this.input_size = input_size;
+        this.output_size = output_size;
+        this.weight_base = weight_base;
+    }
+    
+    // 前向传播
+    函数 forward(input: [f64]): [f64] {
+        if input.长度() != input_size {
+            throw Error::new("Invalid input size");
+        }
+        
+        令 output = [f64; output_size];
+        
+        for i in 0..<output_size {
+            令 sum = 0.0;
+            for j in 0..<input_size {
+                令 weight_index = weight_base + i * input_size + j;
+                令 resistance = weights.read_resistance(weight_index);
+                // 电阻值映射到权重值（简化映射）
+                令 weight = 2.0 * (resistance - 5000.0) / 9900.0; // 映射到 [-1, 1]
+                sum += input[j] * weight;
+            }
+            // 使用ReLU激活函数
+            output[i] = if sum > 0.0 { sum } else { 0.0 };
+        }
+        
+        return output;
+    }
+    
+    // 权重更新（使用忆阻器特性）
+    函数 update_weights(delta_weights: [[f64]]): void {
+        if delta_weights.长度() != output_size || delta_weights[0].长度() != input_size {
+            throw Error::new("Invalid delta weights size");
+        }
+        
+        令 operations = [[i32, f64, f64]];
+        
+        for i in 0..<output_size {
+            for j in 0..<input_size {
+                令 weight_index = weight_base + i * input_size + j;
+                令 delta = delta_weights[i][j];
+                
+                // 将权重变化转换为电压和时间
+                令 voltage = if delta > 0.0 { 3.0 } else { -3.0 };
+                令 time = abs(delta) * 0.01; // 时间与变化量成正比
+                
+                operations.append([weight_index, voltage, time]);
+            }
+        }
+        
+        // 批量更新权重
+        weights.batch_operation(operations);
+    }
+    
+    // 初始化权重
+    函数 initialize_weights(): void {
+        for i in 0..<output_size {
+            for j in 0..<input_size {
+                令 weight_index = weight_base + i * input_size + j;
+                
+                // 随机初始化权重（通过不同的电压和时间）
+                令 rand_voltage = (math.random() * 6.0) - 3.0; // [-3, 3] V
+                令 rand_time = 0.01 + math.random() * 0.09;    // [0.01, 0.1] s
+                
+                weights.write_resistance(weight_index, rand_voltage, rand_time);
+            }
+        }
+    }
+}
+
+// 演示Kz语言直接操作忆阻器的函数
+函数 演示忆阻器操作(): void {
+    io.println("=== Kz语言忆阻器操作演示 ===");
+    
+    // 创建忆阻器模拟器（实际应用中使用PhysicalMemristorDevice）
+    io.println("初始化忆阻器模拟器...");
+    令 memristor = MemristorSimulator::new(1024);
+    
+    // 基本读写操作演示
+    io.println("\n1. 基本读写操作：");
+    令 test_address = 42;
+    
+    // 读取初始电阻
+    令 initial_resistance = memristor.read_resistance(test_address);
+    io.println(f"初始电阻: {initial_resistance:.2f} Ohms");
+    
+    // 施加正向电压增加导电丝宽度（降低电阻）
+    io.println("施加+3V电压10ms...");
+    memristor.write_resistance(test_address, 3.0, 0.01);
+    令 low_resistance = memristor.read_resistance(test_address);
+    io.println(f"低阻态电阻: {low_resistance:.2f} Ohms");
+    
+    // 施加负向电压减小导电丝宽度（增加电阻）
+    io.println("施加-3V电压10ms...");
+    memristor.write_resistance(test_address, -3.0, 0.01);
+    令 high_resistance = memristor.read_resistance(test_address);
+    io.println(f"高阻态电阻: {high_resistance:.2f} Ohms");
+    
+    // 重置忆阻器
+    io.println("重置忆阻器...");
+    memristor.reset(test_address);
+    令 reset_resistance = memristor.read_resistance(test_address);
+    io.println(f"重置后电阻: {reset_resistance:.2f} Ohms");
+    
+    // 状态查询演示
+    io.println("\n2. 状态查询：");
+    令 state = memristor.get_state(test_address);
+    io.println(f"当前电阻: {state.当前电阻:.2f} Ohms");
+    io.println(f"最小电阻: {state.最小电阻:.2f} Ohms");
+    io.println(f"最大电阻: {state.最大电阻:.2f} Ohms");
+    io.println(f"历史电荷: {state.历史电荷:.6f} C");
+    io.println(f"状态: {state.状态}");
+    
+    // 批量操作演示
+    io.println("\n3. 批量操作：");
+    令 batch_operations = [
+        [100, 2.5, 0.05],  // 地址100，2.5V，50ms
+        [101, -2.0, 0.02], // 地址101，-2.0V，20ms
+        [102, 1.5, 0.03]   // 地址102，1.5V，30ms
+    ];
+    
+    io.println("执行批量操作...");
+    memristor.batch_operation(batch_operations);
+    
+    for op in batch_operations {
+        令 [address, voltage, time] = op;
+        令 resistance = memristor.read_resistance(address);
+        io.println(f"地址{address}: {voltage}V, {time*1000}ms -> 电阻 {resistance:.2f} Ohms");
+    }
+    
+    // 神经网络应用演示
+    io.println("\n4. 神经网络应用：");
+    io.println("创建一个简单的忆阻神经网络层...");
+    
+    令 input_size = 3;
+    令 output_size = 2;
+    令 neural_layer = MemristorNeuralLayer::new(memristor, input_size, output_size, 200);
+    
+    io.println("初始化权重...");
+    neural_layer.initialize_weights();
+    
+    // 测试前向传播
+    令 test_input = [1.0, 0.5, -0.2];
+    io.println(f"输入: {test_input}");
+    令 output = neural_layer.forward(test_input);
+    io.println(f"输出: {output}");
+    
+    // 演示应用场景
+    io.println("\n=== 忆阻器应用场景 ===");
+    io.println("1. 神经形态计算：在硬件层面实现神经网络，低功耗高能效");
+    io.println("2. 非易失性内存：断电后保持数据，可用于边缘计算设备");
+    io.println("3. 逻辑运算：在存储单元中直接进行计算，减少数据移动");
+    io.println("4. 模拟计算：进行模拟信号处理，适合AI和信号处理应用");
+    io.println("5. 自适应系统：根据历史使用情况自动调整参数");
+}
+
+// Kz语言忆阻器扩展设计说明
+函数 忆阻器扩展设计说明(): void {
+    io.println("\n=== Kz语言忆阻器扩展设计说明 ===");
+    
+    io.println("1. 硬件抽象层：");
+    io.println("   - 提供统一的MemristorDevice接口，支持物理设备和模拟器");
+    io.println("   - 支持SPI、I2C等多种总线接口连接实际忆阻器硬件");
+    io.println("   - 实现设备发现、初始化和错误处理机制");
+    
+    io.println("\n2. 语言层面扩展：");
+    io.println("   - 新增memristor关键字，用于声明忆阻器变量");
+    io.println("   - 支持忆阻器数组和矩阵类型，便于神经网络应用");
+    io.println("   - 提供特殊的操作符用于忆阻器读写（如 :=> 写入， <:= 读取）");
+    io.println("   - 内建安全检查，防止过压损坏设备");
+    
+    io.println("\n3. 性能优化：");
+    io.println("   - 批量操作API，减少总线通信开销");
+    io.println("   - 异步操作支持，提高并发性能");
+    io.println("   - 缓存机制，减少频繁访问相同单元");
+    io.println("   - MLIR优化，针对忆阻器操作的特殊优化通道");
+    
+    io.println("\n4. 应用库：");
+    io.println("   - 神经网络库：基于忆阻器的高效神经网络实现");
+    io.println("   - 存储库：提供类似传统内存的接口，但使用忆阻器");
+    io.println("   - 信号处理库：用于模拟信号处理的专用函数");
+    io.println("   - 安全库：提供数据加密和安全存储功能");
+}
+
+// 主函数
+函数 主(): i32 {
+    // 演示基本的忆阻器操作
+    演示忆阻器操作();
+    
+    // 显示设计说明
+    忆阻器扩展设计说明();
+    
+    io.println("\nKz语言忆阻器支持演示完成！");
+    return 0;
+}

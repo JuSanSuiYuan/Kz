@@ -1,0 +1,325 @@
+# Kz语言内联汇编示例
+# 许可证: MulanPSL-2.0
+# 行尾序列: LF
+
+# 导入必要的模块
+import memory
+import math
+
+# 基本内联汇编示例
+fn 基本汇编加法(a: int, b: int) -> int {
+    # 最简单的内联汇编示例 - 使用x86_64汇编执行加法
+    asm {
+        mov rax, a    # 将a的值移入rax寄存器
+        add rax, b    # 将b的值加到rax
+        # 函数返回值默认使用rax寄存器
+    }
+}
+
+# 使用输入/输出操作数的内联汇编
+fn 汇编乘法(x: int, y: int) -> int {
+    # 使用内联汇编进行乘法运算
+    # 这里明确指定操作数约束
+    asm (output: ("=a" result: int)) {
+        mov rax, x    # 将x的值移入rax寄存器
+        imul rax, y   # 与y相乘，结果保存在rax
+        # "=a"约束表示结果将通过rax寄存器返回给result变量
+    }
+    return result
+}
+
+# 使用内存池的汇编优化函数
+fn 优化版求和(array: []int) -> int {
+    设 sum = 0
+    设 length = len(array)
+    
+    # 使用x86_64汇编进行循环优化
+    asm {
+        xor rax, rax        # 清零rax寄存器，用作累加器
+        mov rcx, 0          # 清零rcx寄存器，用作索引
+        mov rdx, array      # 获取数组地址
+        mov rsi, length     # 获取数组长度
+        
+    loop_start:
+        cmp rcx, rsi        # 比较索引和长度
+        jge loop_end        # 如果索引 >= 长度，结束循环
+        
+        add rax, [rdx+rcx*8]  # 将当前元素加到累加器
+        inc rcx             # 索引加1
+        jmp loop_start      # 继续循环
+        
+    loop_end:
+        mov sum, rax        # 将累加器的值赋给sum变量
+    }
+    
+    return sum
+}
+
+# 汇编实现的快速幂算法
+fn 汇编快速幂(base: int, exponent: int) -> int {
+    设 result = 1
+    
+    asm {
+        mov rax, 1          # 结果初始化为1
+        mov rbx, base       # 底数
+        mov rcx, exponent   # 指数
+        
+    power_loop:
+        cmp rcx, 0          # 检查指数是否为0
+        je power_end        # 如果是，结束循环
+        
+        test rcx, 1         # 检查指数最低位是否为1
+        jz skip_multiply    # 如果为0，跳过乘法
+        
+        imul rax, rbx       # 结果 = 结果 * 底数
+        
+    skip_multiply:
+        imul rbx, rbx       # 底数 = 底数 * 底数
+        shr rcx, 1          # 指数右移一位（除以2）
+        jmp power_loop      # 继续循环
+        
+    power_end:
+        mov result, rax     # 将最终结果保存
+    }
+    
+    return result
+}
+
+# 汇编优化的字符串长度计算
+fn 汇编字符串长度(s: string) -> int {
+    设 len = 0
+    
+    asm {
+        mov rcx, -1         # 初始化为-1（全1）
+        xor rax, rax        # 清零rax（搜索的字符值：null）
+        mov rdi, s          # 字符串地址
+        cld                 # 清除方向标志（向前搜索）
+        repne scasb         # 重复搜索直到找到null字符
+        not rcx             # 对结果取反
+        dec rcx             # 减1得到实际长度
+        mov len, rcx        # 保存结果
+    }
+    
+    return len
+}
+
+# 内存池分配与汇编内存操作示例
+class AssemblyOptimizedProcessor {
+    令 memory_pool: memory.ObjectPool<[]int>
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        this.memory_pool = memory.create_object_pool<[]int>(
+            initial_size: 5,
+            max_size: 20,
+            factory_fn: fn() -> []int {
+                # 创建固定大小的数组
+                return memory.allocate_array<int>(1000)
+            }
+        )
+        return this
+    }
+    
+    # 使用内存池和汇编优化的向量点积计算
+    fn 向量点积(a: []int, b: []int) -> int {
+        设 result = 0
+        设 n = len(a)
+        
+        # 确保两个向量长度相同
+        if n != len(b):
+            return 0
+        
+        # 使用汇编优化点积计算
+        asm {
+            xor rax, rax        # 清零累加器
+            mov rcx, 0          # 索引
+            mov rdx, a          # 第一个向量地址
+            mov rsi, b          # 第二个向量地址
+            mov r8, n           # 向量长度
+            
+        dot_loop:
+            cmp rcx, r8         # 比较索引和长度
+            jge dot_end         # 如果索引 >= 长度，结束循环
+            
+            mov r9d, [rdx+rcx*4]  # 加载a[i]
+            imul r9d, [rsi+rcx*4] # 乘以b[i]
+            add rax, r9         # 加到累加器
+            inc rcx             # 索引加1
+            jmp dot_loop        # 继续循环
+            
+        dot_end:
+            mov result, rax     # 保存结果
+        }
+        
+        return result
+    }
+    
+    # 使用SIMD汇编指令优化向量加法
+    fn 向量加法_simd(a: []float32, b: []float32) -> []float32 {
+        设 n = len(a)
+        
+        # 确保两个向量长度相同
+        if n != len(b):
+            return []float32{}
+        
+        # 从内存池分配结果数组
+        设 result = this.memory_pool.allocate()
+        
+        # 使用SSE/AVX指令集优化浮点向量加法
+        asm {
+            mov rcx, 0          # 索引
+            mov rdx, a          # 第一个向量地址
+            mov rsi, b          # 第二个向量地址
+            mov rdi, result     # 结果向量地址
+            mov r8, n           # 向量长度
+            
+        simd_loop:
+            cmp rcx, r8         # 比较索引和长度
+            jge simd_end        # 如果索引 >= 长度，结束循环
+            
+            # 检查是否有足够元素进行SIMD操作（每次处理4个float32）
+            mov rax, r8
+            sub rax, rcx
+            cmp rax, 4
+            jl scalar_add
+            
+            # SSE指令处理4个float32
+            movups xmm0, [rdx+rcx*4]    # 加载a的4个元素
+            movups xmm1, [rsi+rcx*4]    # 加载b的4个元素
+            addps xmm0, xmm1            # 向量加法
+            movups [rdi+rcx*4], xmm0    # 保存结果
+            add rcx, 4                  # 索引加4
+            jmp simd_loop
+            
+        scalar_add:
+            # 处理剩余的元素（不足4个）
+            movss xmm0, [rdx+rcx*4]     # 加载a[rcx]
+            addss xmm0, [rsi+rcx*4]     # 加上b[rcx]
+            movss [rdi+rcx*4], xmm0     # 保存结果
+            inc rcx                     # 索引加1
+            jmp simd_loop
+            
+        simd_end:
+            # 结果已经保存到result数组
+        }
+        
+        return result
+    }
+    
+    fn 销毁() -> void {
+        this.memory_pool.destroy()
+    }
+}
+
+# 三进制数转换的汇编优化
+fn 十进制转三进制_汇编(n: int) -> string {
+    # 对于负数特殊处理
+    设 is_negative = n < 0
+    if is_negative:
+        n = -n
+    
+    # 分配结果字符串（最大长度）
+    设 max_len = 32
+    设 buffer = memory.allocate_array<byte>(max_len)
+    
+    asm {
+        mov rax, n           # 要转换的数
+        mov rbx, 3           # 基数：3
+        mov rcx, max_len     # 缓冲区大小
+        mov rdx, buffer      # 缓冲区地址
+        mov rdi, rcx         # 从末尾开始
+        dec rdi
+        
+        mov byte ptr [rdx+rdi], 0   # 字符串结束符
+        dec rdi
+        
+    conversion_loop:
+        cmp rax, 0           # 检查是否还有数字需要转换
+        jz conversion_end
+        
+        xor rdx, rdx         # 清零高32位用于除法
+        mov rax, n           # 重新加载n
+        div rbx              # rax = n / 3, rdx = n % 3
+        
+        mov n, rax           # 更新n为商
+        
+        # 将余数转换为字符
+        add dl, '0'          # 转换为ASCII数字
+        mov byte ptr [rdx+rdi], dl  # 存储字符
+        dec rdi              # 移动到前一个位置
+        
+        jmp conversion_loop
+        
+    conversion_end:
+        
+        # 处理负数
+        cmp is_negative, 0
+        jne add_minus
+        jmp done
+        
+    add_minus:
+        mov byte ptr [rdx+rdi], '-'  # 添加负号
+        dec rdi
+        
+    done:
+        inc rdi              # 调整到第一个有效字符
+        # 现在rdi指向结果字符串的起始位置
+    }
+    
+    # 从缓冲区创建字符串
+    设 result = string(buffer[rdi..max_len])
+    memory.free(buffer)
+    
+    return result
+}
+
+# 主函数
+fn main() -> int {
+    print("Kz语言内联汇编功能示例")
+    print("=========================")
+    
+    # 测试基本汇编加法
+    令 a = 10
+    令 b = 20
+    设 sum = 基本汇编加法(a, b)
+    print(f"基本汇编加法: {a} + {b} = {sum}")
+    
+    # 测试汇编乘法
+    设 product = 汇编乘法(a, b)
+    print(f"汇编乘法: {a} * {b} = {product}")
+    
+    # 测试优化版求和
+    令 numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    设 array_sum = 优化版求和(numbers)
+    print(f"数组求和 [1-10]: {array_sum}")
+    
+    # 测试汇编快速幂
+    设 power = 汇编快速幂(2, 10)
+    print(f"快速幂 2^10: {power}")
+    
+    # 测试汇编字符串长度
+    令 test_str = "Kz语言内联汇编"
+    设 str_len = 汇编字符串长度(test_str)
+    print(f"字符串长度 '{test_str}': {str_len}")
+    
+    # 测试十进制转三进制
+    令 decimal = 42
+    设 trinary = 十进制转三进制_汇编(decimal)
+    print(f"十进制 {decimal} 转三进制: {trinary}")
+    
+    # 测试内存池与汇编优化的处理器
+    print("\n测试内存池与SIMD汇编优化:")
+    设 processor = AssemblyOptimizedProcessor{}.初始化()
+    
+    # 测试向量点积
+    令 vec1 = [1, 2, 3, 4, 5]
+    令 vec2 = [5, 4, 3, 2, 1]
+    设 dot_product = processor.向量点积(vec1, vec2)
+    print(f"向量点积: {vec1} · {vec2} = {dot_product}")
+    
+    # 清理资源
+    processor.销毁()
+    
+    print("\n所有示例执行完成")
+    return 0
+}

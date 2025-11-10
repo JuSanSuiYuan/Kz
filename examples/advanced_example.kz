@@ -1,0 +1,343 @@
+# Kz语言高级特性示例
+# 展示三进制优化、多重分派、内存管理和GPU访问
+# 支持Python风格语法和多编码混合编程
+
+import std.io
+import std.trinary
+import std.memory
+import std.gpu
+import std.math
+
+# =======================
+# 三进制优化部分
+# =======================
+
+# 平衡三进制矩阵乘法（三进制特有的优化）
+fn multiply_trinary_matrix(A: Array2D<Trinary>, B: Array2D<Trinary>) -> Array2D<Trinary>
+    let m = A.rows
+    let k = A.cols
+    let n = B.cols
+    
+    # 显式内存分配
+    let result = memory.allocate<Array2D<Trinary>>(m, n)
+    defer memory.free(result)  # 确保释放
+    
+    # 三进制优化的矩阵乘法算法
+    for i in 0..m-1
+        for j in 0..n-1
+            var sum = Trinary(0)
+            for p in 0..k-1
+                # 三进制乘法的特殊优化
+                sum = trinary_add(sum, trinary_mult(A[i,p], B[p,j]))
+            result[i,j] = sum
+    
+    return result
+
+# =======================
+# 多重分派部分（借鉴Julia）
+# =======================
+
+# 基础数值类型
+trait Number
+    fn add(self: Self, other: Self) -> Self
+    fn multiply(self: Self, other: Self) -> Self
+
+# 中文接口示例
+# 展示多编码支持的特性
+interface 计算接口
+    fn 加法(self: Self, other: Self) -> Self
+    fn 乘法(self: Self, other: Self) -> Self
+
+# Int类型实现
+impl Number for Int
+    fn add(self: Int, other: Int) -> Int
+        return self + other
+    
+    fn multiply(self: Int, other: Int) -> Int
+        return self * other
+
+# Int类型的中文接口实现
+impl 计算接口 for Int
+    fn 加法(self: Int, other: Int) -> Int
+        return self + other
+    
+    fn 乘法(self: Int, other: Int) -> Int
+        return self * other
+
+# Float类型实现
+impl Number for Float
+    fn add(self: Float, other: Float) -> Float
+        return self + other
+    
+    fn multiply(self: Float, other: Float) -> Float
+        return self * other
+
+# Float类型的中文接口实现
+impl 计算接口 for Float
+    fn 加法(self: Float, other: Float) -> Float
+        return self + other
+    
+    fn 乘法(self: Float, other: Float) -> Float
+        return self * other
+
+# Trinary类型实现
+impl Number for Trinary
+    fn add(self: Trinary, other: Trinary) -> Trinary
+        return trinary_add(self, other)
+    
+    fn multiply(self: Trinary, other: Trinary) -> Trinary
+        return trinary_mult(self, other)
+
+# Trinary类型的中文接口实现
+impl 计算接口 for Trinary
+    fn 加法(self: Trinary, other: Trinary) -> Trinary
+        return trinary_add(self, other)
+    
+    fn 乘法(self: Trinary, other: Trinary) -> Trinary
+        return trinary_mult(self, other)
+
+# 多重分派的计算函数
+fn compute<T: Number>(a: T, b: T) -> T
+    return a.multiply(b).add(a)
+
+# 中文命名的计算函数
+fn 计算<T: 计算接口>(a: T, b: T) -> T
+    return a.乘法(b).加法(a)
+
+# 特定类型的优化版本（分派优先级）
+fn compute(a: Trinary, b: Trinary) -> Trinary
+    # 三进制特有的优化计算路径
+    let temp = trinary_mult(a, b)
+    return trinary_add_optimized(temp, a)
+
+# =======================
+# 内存管理部分
+# =======================
+
+# 自定义内存池
+class MemoryPool
+    var buffer: Pointer<Byte>
+    var size: Size
+    var free_list: List<MemoryBlock>
+    
+    fn init(size: Size)
+        self.buffer = memory.allocate<Byte>(size)
+        self.size = size
+        self.free_list = List<MemoryBlock>()
+        
+        # 初始化空闲块
+        self.free_list.push(MemoryBlock{ptr = self.buffer, size = size})
+    
+    fn allocate(size: Size) -> Pointer<Byte>
+        # 简单的首次适应算法
+        for i in 0..self.free_list.length-1
+            let block = self.free_list[i]
+            if block.size >= size
+                # 分配内存
+                let result = block.ptr
+                
+                # 更新空闲列表
+                if block.size > size
+                    # 分割块
+                    self.free_list[i].ptr = block.ptr + size
+                    self.free_list[i].size = block.size - size
+                else
+                    # 移除整个块
+                    self.free_list.remove(i)
+                
+                return result
+        
+        error("内存池分配失败")
+    
+    fn deallocate(ptr: Pointer<Byte>, size: Size)
+        # 将内存块放回空闲列表
+        self.free_list.push(MemoryBlock{ptr = ptr, size = size})
+        
+        # 可选：合并相邻空闲块
+        self._merge_free_blocks()
+    
+    fn _merge_free_blocks()
+        # 实现合并逻辑
+        pass
+    
+    fn free()
+        memory.free(self.buffer)
+
+# =======================
+# GPU访问部分（类似Mojo）
+# =======================
+
+# GPU内核函数
+@gpu.kernel
+fn gpu_trinary_vector_add(a: Pointer<Trinary>, b: Pointer<Trinary>, result: Pointer<Trinary>, n: Int)
+    let idx = gpu.thread_id()
+    if idx < n
+        result[idx] = trinary_add(a[idx], b[idx])
+
+# GPU计算示例
+fn run_gpu_computation()
+    if !gpu.available()
+        println("GPU不可用，使用CPU回退")
+        return
+    
+    let n = 1000000
+    
+    # 分配主机内存
+    let a_host = memory.allocate<Trinary>(n)
+    let b_host = memory.allocate<Trinary>(n)
+    let result_host = memory.allocate<Trinary>(n)
+    defer 
+        memory.free(a_host)
+        memory.free(b_host)
+        memory.free(result_host)
+    
+    # 初始化数据
+    for i in 0..n-1
+        a_host[i] = Trinary(i % 3 - 1)  # -1, 0, 1循环
+        b_host[i] = Trinary((i + 1) % 3 - 1)
+    
+    # 分配设备内存
+    let a_device = gpu.allocate<Trinary>(n)
+    let b_device = gpu.allocate<Trinary>(n)
+    let result_device = gpu.allocate<Trinary>(n)
+    defer 
+        gpu.free(a_device)
+        gpu.free(b_device)
+        gpu.free(result_device)
+    
+    # 复制数据到设备
+    gpu.memcpy_host_to_device(a_device, a_host, n * sizeof(Trinary))
+    gpu.memcpy_host_to_device(b_device, b_host, n * sizeof(Trinary))
+    
+    # 启动GPU内核
+    let block_size = 256
+    let grid_size = (n + block_size - 1) / block_size
+    gpu.launch_kernel(gpu_trinary_vector_add, grid_size, block_size, 
+                      a_device, b_device, result_device, n)
+    
+    # 等待GPU完成
+    gpu.synchronize()
+    
+    # 复制结果回主机
+    gpu.memcpy_device_to_host(result_host, result_device, n * sizeof(Trinary))
+    
+    println("GPU三进制向量加法完成")
+
+# =======================
+# 编译期计算示例
+# =======================
+
+# 编译期质数计算
+@compile_time
+fn is_prime(n: Int) -> Bool
+    if n <= 1
+        return false
+    if n <= 3
+        return true
+    if n % 2 == 0 || n % 3 == 0
+        return false
+    
+    let limit = int(math.sqrt(float(n))) + 1
+    for i in 5..limit step 6
+        if n % i == 0 || n % (i + 2) == 0
+            return false
+    
+    return true
+
+# 编译期常量
+const FIRST_10_PRIMES = @compile_time 
+    let primes = List<Int>()
+    let count = 0
+    let i = 2
+    
+    while count < 10
+        if is_prime(i)
+            primes.push(i)
+            count += 1
+        i += 1
+    
+    primes
+
+# =======================
+# 主函数
+fn main() -> Int
+    io.println("=== Kz语言高级特性示例 ===")
+    io.println("许可证: 木兰2.0许可证")
+    io.println("行尾序列: LF")
+    io.println("类型系统: 强类型静态语言")
+    io.println("内存管理: 无GC，手动管理")
+    
+    # 测试多重分派
+    io.println("\n=== 测试多重分派 ===")
+    
+    # 强类型变量声明
+    let int_a: Int = 3
+    let int_b: Int = 4
+    let float_a: Float = 3.5
+    let float_b: Float = 4.2
+    let tri_a: Trinary = Trinary(1)
+    let tri_b: Trinary = Trinary(-1)
+    
+    io.println("Int计算结果: " + string(compute(int_a, int_b)))
+    io.println("Float计算结果: " + string(compute(float_a, float_b)))
+    io.println("Trinary计算结果: " + string(compute(tri_a, tri_b)))
+    
+    # 测试中文接口和多编码支持
+    io.println("\n=== 测试中文接口 ===")
+    io.println("Int中文计算: " + string(计算(5, 6)))
+    io.println("Float中文计算: " + string(计算(2.5, 3.5)))
+    io.println("Trinary中文计算: " + string(计算(Trinary(1), Trinary(1))))
+    
+    # 测试内存池 - 无GC内存管理示例
+    io.println("\n=== 测试自定义内存池 ===")
+    let pool = MemoryPool(4096)  # 创建4KB内存池
+    defer pool.free()
+    
+    # 强类型指针
+    let ptr1: Pointer<Byte> = pool.allocate(128)
+    let ptr2: Pointer<Byte> = pool.allocate(256)
+    let ptr3: Pointer<Byte> = pool.allocate(512)
+    io.println("分配了3个内存块")
+    
+    # 获取内存池状态
+    let (blocks, current, peak) = pool.get_stats()
+    io.println("内存池状态 - 块数: " + string(blocks) + ", 当前使用: " + string(current) + ", 峰值: " + string(peak))
+    
+    # 释放内存块 - 无GC环境下必须的操作
+    pool.deallocate(ptr1, 128)
+    io.println("释放了一个内存块")
+    
+    # 重新分配
+    let ptr4: Pointer<Byte> = pool.allocate(64)
+    io.println("重新分配了一个小内存块")
+    
+    # 再次获取状态
+    let (blocks2, current2, peak2) = pool.get_stats()
+    io.println("内存池最终状态 - 块数: " + string(blocks2) + ", 当前使用: " + string(current2) + ", 峰值: " + string(peak2))
+    
+    # 释放剩余内存
+    pool.deallocate(ptr2, 256)
+    pool.deallocate(ptr3, 512)
+    pool.deallocate(ptr4, 64)
+    
+    # 测试GPU计算
+    io.println("\n=== 测试GPU计算 ===")
+    let gpu_success: Bool = run_gpu_computation()
+    
+    # 显示编译期计算结果 - 强类型常量
+    io.println("\n=== 编译期计算结果 ===")
+    io.println("编译期计算的前10个质数:")
+    for prime in FIRST_10_PRIMES
+        io.print(string(prime) + " ")
+    io.println()
+    
+    # Kz语言特性总结
+    io.println("\n=== Kz语言特性总结 ===")
+    io.println("1. 三进制优化: 平衡三进制在信息密度和运算效率上的优势")
+    io.println("2. 强类型静态: 编译时类型检查，提高代码安全性和性能")
+    io.println("3. 无GC内存管理: 手动内存控制，适合系统编程和高性能计算")
+    io.println("4. 多编码支持: UTF-8编码，支持中文命名和多语言混合编程")
+    io.println("5. Python风格语法: 缩进代替大括号，#注释，提高可读性")
+    io.println("6. 许可证: 采用木兰2.0许可证，开源友好")
+    
+    return if gpu_success then 0 else 1

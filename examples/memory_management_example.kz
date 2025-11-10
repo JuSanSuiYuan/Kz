@@ -1,0 +1,426 @@
+# Kz语言内存管理示例
+# 专门展示无GC特性和强类型系统
+# 行尾序列: LF (Line Feed)
+# 许可证: 木兰2.0许可证 (MulanPSL-2.0)
+
+import std.io
+import std.memory
+import std.math
+
+# =======================
+# 强类型定义示例
+# =======================
+
+# 强类型结构体定义
+type MemoryStats:
+    total_bytes: Size
+    used_bytes: Size
+    allocation_count: Int
+    free_count: Int
+
+# 强类型枚举
+enum AllocationPolicy:
+    FIRST_FIT
+    BEST_FIT
+    WORST_FIT
+
+# 强类型联合体
+union MemoryBlockType:
+    small_block: SmallBlock
+    large_block: LargeBlock
+
+# 嵌套强类型
+type SmallBlock:
+    size: Size
+    data: Pointer<Byte>
+
+type LargeBlock:
+    size: Size
+    data: Pointer<Byte>
+    next: Pointer<LargeBlock>
+    prev: Pointer<LargeBlock>
+
+# =======================
+# 无GC内存管理示例
+# =======================
+
+# 简单的内存分配器实现
+class SimpleAllocator:
+    # 强类型成员变量
+    var base_ptr: Pointer<Byte>
+    var size: Size
+    var used: Size
+    var stats: MemoryStats
+    var policy: AllocationPolicy
+    
+    # 初始化函数
+    fn init(size: Size, policy: AllocationPolicy = AllocationPolicy.FIRST_FIT) -> SimpleAllocator:
+        io.println("创建简单内存分配器，大小: " + string(size) + " 字节")
+        
+        # 手动分配大块内存 - 无GC环境下的基础
+        let ptr: Pointer<Byte> = memory.allocate<Byte>(size)
+        if ptr == null:
+            error("内存分配失败")
+        
+        return SimpleAllocator(
+            base_ptr: ptr,
+            size: size,
+            used: 0,
+            stats: MemoryStats(
+                total_bytes: size,
+                used_bytes: 0,
+                allocation_count: 0,
+                free_count: 0
+            ),
+            policy: policy
+        )
+    
+    # 分配内存 - 强类型返回
+    fn allocate(&self: SimpleAllocator, bytes: Size) -> Pointer<Byte>:
+        if bytes == 0:
+            error("请求分配0字节内存")
+        
+        if self.used + bytes > self.size:
+            error("内存不足，无法分配 " + string(bytes) + " 字节")
+        
+        # 计算分配地址
+        let alloc_ptr: Pointer<Byte> = self.base_ptr + self.used
+        
+        # 更新统计信息
+        self.used += bytes
+        self.stats.used_bytes = self.used
+        self.stats.allocation_count += 1
+        
+        io.println("分配内存: " + string(bytes) + " 字节, 地址: " + string(alloc_ptr))
+        return alloc_ptr
+    
+    # 释放整个分配器 - 无GC环境下必须的清理
+    fn free(&self: SimpleAllocator) -> Void:
+        io.println("释放内存分配器，总大小: " + string(self.size) + " 字节")
+        io.println("分配器统计: 分配次数=" + string(self.stats.allocation_count) + ", 释放次数=" + string(self.stats.free_count))
+        
+        # 释放基础内存块
+        memory.free(self.base_ptr)
+        
+        # 重置状态
+        self.base_ptr = null
+        self.size = 0
+        self.used = 0
+        self.stats = MemoryStats(
+            total_bytes: 0,
+            used_bytes: 0,
+            allocation_count: 0,
+            free_count: 0
+        )
+    
+    # 获取内存使用统计
+    fn get_stats(&self: SimpleAllocator) -> MemoryStats:
+        return self.stats
+
+# =======================
+# 类型安全的内存池实现
+# =======================
+
+# 强类型内存池
+template <T> class TypedMemoryPool:
+    var buffer: Pointer<T>
+    var size: Int
+    var free_indices: List<Int>
+    var used_count: Int
+    
+    # 初始化内存池
+    fn init(size: Int) -> TypedMemoryPool<T>:
+        io.println("创建类型化内存池，元素类型: " + type_name(T) + ", 大小: " + string(size))
+        
+        # 分配特定类型的内存
+        let pool_buffer: Pointer<T> = memory.allocate<T>(size)
+        if pool_buffer == null:
+            error("内存池分配失败")
+        
+        # 初始化空闲索引列表
+        let indices: List<Int> = List<Int>()
+        for i in 0..size-1:
+            indices.push(i)
+        
+        return TypedMemoryPool<T>(
+            buffer: pool_buffer,
+            size: size,
+            free_indices: indices,
+            used_count: 0
+        )
+    
+    # 分配特定类型的对象
+    fn allocate(&self: TypedMemoryPool<T>) -> Pointer<T>:
+        if self.free_indices.is_empty():
+            error("内存池已满，无法分配新对象")
+        
+        # 获取并移除最后一个空闲索引
+        let index: Int = self.free_indices.pop()
+        self.used_count += 1
+        
+        # 计算对象地址
+        let ptr: Pointer<T> = self.buffer + index
+        
+        io.println("从类型化内存池分配对象，索引: " + string(index) + ", 地址: " + string(ptr))
+        return ptr
+    
+    # 释放特定类型的对象
+    fn deallocate(&self: TypedMemoryPool<T>, ptr: Pointer<T>) -> Void:
+        # 计算对象索引
+        let index: Int = ptr - self.buffer
+        
+        # 验证索引有效性
+        if index < 0 || index >= self.size:
+            error("尝试释放内存池外的对象")
+        
+        # 将索引放回空闲列表
+        self.free_indices.push(index)
+        self.used_count -= 1
+        
+        io.println("释放类型化内存池对象，索引: " + string(index))
+    
+    # 释放整个内存池
+    fn free(&self: TypedMemoryPool<T>) -> Void:
+        io.println("释放类型化内存池，大小: " + string(self.size) + " 个元素")
+        memory.free(self.buffer)
+        
+        # 重置状态
+        self.buffer = null
+        self.size = 0
+        self.free_indices.clear()
+        self.used_count = 0
+    
+    # 获取使用统计
+    fn get_stats(&self: TypedMemoryPool<T>) -> Tuple<Int, Int, Int>:
+        return (self.size, self.used_count, self.size - self.used_count)
+
+# =======================
+# 强类型对象示例
+# =======================
+
+# 复杂对象类型
+type Person:
+    name: String
+    age: Int
+    data: Pointer<Byte>  # 指向额外数据的指针 - 无GC环境下需要手动管理
+
+# Person对象管理器
+class PersonManager:
+    var persons: List<Person>
+    
+    fn init() -> PersonManager:
+        return PersonManager(
+            persons: List<Person>()
+        )
+    
+    # 创建Person对象 - 无GC环境下的对象生命周期管理
+    fn create_person(&self: PersonManager, name: String, age: Int, extra_data_size: Size) -> Person:
+        # 创建对象
+        let person: Person = Person(
+            name: name,
+            age: age,
+            data: null
+        )
+        
+        # 如果需要额外数据，手动分配
+        if extra_data_size > 0:
+            person.data = memory.allocate<Byte>(extra_data_size)
+            io.println("为Person " + name + " 分配了 " + string(extra_data_size) + " 字节的额外数据")
+        
+        # 添加到管理器
+        self.persons.push(person)
+        
+        return person
+    
+    # 释放Person对象 - 无GC环境下必须手动释放所有资源
+    fn destroy_person(&self: PersonManager, index: Int) -> Bool:
+        if index < 0 || index >= self.persons.length:
+            return false
+        
+        # 获取对象引用
+        let person: Person = self.persons[index]
+        
+        # 释放额外数据 - 无GC环境下的关键步骤
+        if person.data != null:
+            memory.free(person.data)
+            io.println("释放了Person " + person.name + " 的额外数据")
+        
+        # 从列表中移除
+        self.persons.remove(index)
+        io.println("Person " + person.name + " 已销毁")
+        
+        return true
+    
+    # 释放所有Person对象
+    fn free_all(&self: PersonManager) -> Void:
+        io.println("释放所有Person对象，数量: " + string(self.persons.length))
+        
+        # 必须手动释放每个对象的资源
+        for person in self.persons:
+            if person.data != null:
+                memory.free(person.data)
+        
+        # 清空列表
+        self.persons.clear()
+
+# =======================
+# 内存安全性示例
+# =======================
+
+# 安全内存操作函数
+fn safe_memory_copy(dest: Pointer<Byte>, src: Pointer<Byte>, size: Size, dest_size: Size, src_size: Size) -> Bool:
+    # 强类型参数检查
+    if dest == null || src == null || size == 0:
+        return false
+    
+    # 安全边界检查 - 无GC环境下的内存安全
+    if size > dest_size || size > src_size:
+        return false
+    
+    # 执行内存复制
+    for i in 0..size-1:
+        dest[i] = src[i]
+    
+    return true
+
+# =======================
+# 主函数示例
+# =======================
+
+fn main() -> Int:
+    io.println("=== Kz语言内存管理示例 ===")
+    io.println("许可证: 木兰2.0许可证")
+    io.println("行尾序列: LF")
+    io.println("类型系统: 强类型静态语言")
+    io.println("内存管理: 无GC，手动管理")
+    
+    # 示例1: 使用简单内存分配器
+    io.println("\n=== 示例1: 简单内存分配器 ===")
+    
+    # 创建分配器
+    let allocator: SimpleAllocator = SimpleAllocator(1024)  # 1KB内存
+    defer allocator.free()  # 确保函数结束时释放
+    
+    # 分配内存
+    let data1: Pointer<Int> = cast<Pointer<Int>>(allocator.allocate(64))  # 16个整数
+    let data2: Pointer<Float> = cast<Pointer<Float>>(allocator.allocate(128))  # 32个浮点数
+    
+    # 使用内存
+    for i in 0..15:
+        data1[i] = i * 10
+    
+    for i in 0..31:
+        data2[i] = float(i) * 0.5
+    
+    # 显示一些数据
+    io.println("数据1[0]: " + string(data1[0]))
+    io.println("数据1[15]: " + string(data1[15]))
+    io.println("数据2[0]: " + string(data2[0]))
+    io.println("数据2[31]: " + string(data2[31]))
+    
+    # 获取统计信息
+    let stats: MemoryStats = allocator.get_stats()
+    io.println("分配器统计 - 已用: " + string(stats.used_bytes) + "/" + string(stats.total_bytes) + " 字节")
+    io.println("分配次数: " + string(stats.allocation_count))
+    
+    # 示例2: 使用类型化内存池
+    io.println("\n=== 示例2: 类型化内存池 ===")
+    
+    # 创建整数类型的内存池
+    let int_pool: TypedMemoryPool<Int> = TypedMemoryPool<Int>(100)
+    defer int_pool.free()
+    
+    # 分配一些整数
+    let int1: Pointer<Int> = int_pool.allocate()
+    let int2: Pointer<Int> = int_pool.allocate()
+    let int3: Pointer<Int> = int_pool.allocate()
+    
+    # 使用分配的整数
+    *int1 = 42
+    *int2 = 100
+    *int3 = -50
+    
+    io.println("整数池分配的值: " + string(*int1) + ", " + string(*int2) + ", " + string(*int3))
+    
+    # 释放一些整数
+    int_pool.deallocate(int2)
+    
+    # 重新分配
+    let int4: Pointer<Int> = int_pool.allocate()
+    *int4 = 999
+    
+    io.println("重新分配的整数值: " + string(*int4))
+    
+    # 获取池统计
+    let (pool_size, used, free) = int_pool.get_stats()
+    io.println("整数池统计 - 总大小: " + string(pool_size) + ", 已用: " + string(used) + ", 空闲: " + string(free))
+    
+    # 释放其余整数
+    int_pool.deallocate(int1)
+    int_pool.deallocate(int3)
+    int_pool.deallocate(int4)
+    
+    # 示例3: 对象生命周期管理
+    io.println("\n=== 示例3: 对象生命周期管理 ===")
+    
+    # 创建Person管理器
+    let person_manager: PersonManager = PersonManager()
+    defer person_manager.free_all()
+    
+    # 创建Person对象
+    let person1: Person = person_manager.create_person("张三", 30, 128)
+    let person2: Person = person_manager.create_person("李四", 25, 256)
+    let person3: Person = person_manager.create_person("王五", 40, 0)  # 不需要额外数据
+    
+    io.println("创建了 " + string(person_manager.persons.length) + " 个Person对象")
+    io.println("Person1: " + person1.name + ", " + string(person1.age) + "岁")
+    io.println("Person2: " + person2.name + ", " + string(person2.age) + "岁")
+    io.println("Person3: " + person3.name + ", " + string(person3.age) + "岁")
+    
+    # 安全释放一个对象
+    let success: Bool = person_manager.destroy_person(1)  # 销毁李四
+    io.println("销毁结果: " + string(success))
+    io.println("剩余Person对象数量: " + string(person_manager.persons.length))
+    
+    # 示例4: 安全内存操作
+    io.println("\n=== 示例4: 安全内存操作 ===")
+    
+    # 分配两个缓冲区
+    let src_buffer: Pointer<Byte> = memory.allocate<Byte>(100)
+    let dest_buffer: Pointer<Byte> = memory.allocate<Byte>(100)
+    
+    # 确保释放
+    defer 
+        memory.free(src_buffer)
+        memory.free(dest_buffer)
+    
+    # 初始化源缓冲区
+    for i in 0..99:
+        src_buffer[i] = Byte(i % 256)
+    
+    # 安全复制内存
+    let copy_result: Bool = safe_memory_copy(dest_buffer, src_buffer, 50, 100, 100)
+    io.println("内存复制结果: " + string(copy_result))
+    
+    # 验证复制
+    let verified: Bool = true
+    for i in 0..49:
+        if dest_buffer[i] != src_buffer[i]:
+            verified = false
+            break
+    
+    io.println("内存复制验证: " + string(verified))
+    
+    # 尝试不安全的复制
+    let unsafe_result: Bool = safe_memory_copy(dest_buffer, src_buffer, 200, 100, 100)
+    io.println("不安全内存复制结果: " + string(unsafe_result))
+    
+    # 总结
+    io.println("\n=== 总结 ===")
+    io.println("1. Kz语言是强类型静态语言，编译时进行严格类型检查")
+    io.println("2. Kz语言采用无GC内存管理，所有内存必须手动分配和释放")
+    io.println("3. 无GC环境下需要特别注意对象生命周期和资源清理")
+    io.println("4. 强类型系统有助于在编译期捕获类型错误")
+    io.println("5. 行尾序列统一使用LF，许可证为木兰2.0许可证")
+    
+    return 0

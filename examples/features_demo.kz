@@ -1,0 +1,381 @@
+/*
+ * Kz语言 - 新特性综合演示
+ * 许可证：木兰2.0（Mulan PSL v2）
+ * 行尾序列：LF（\n）
+ */
+
+// 导入必要的模块
+import std.io;
+import std.math;
+import std.container;
+import std.time;
+import mlir.optimize;
+import linker.mold;
+import hardware.memristor;
+import hardware.bus;
+import neural.memristor;
+
+// 定义用于演示的结构体和枚举
+枚举 动物 {
+    狗,
+    猫,
+    鸟,
+    鱼,
+    其他(string)
+}
+
+结构体 宠物 {
+    名称: string,
+    类型: 动物,
+    年龄: i32,
+    体重: f64
+}
+
+// 使用MLIR优化的快速排序函数
+@mlir_optimize(["canonicalize", "cse", "vectorize", "affine-loop-fusion"])
+函数 快速排序<T>(数组: [T], 比较函数: fn(T, T) -> bool): [T] {
+    if 数组.长度() <= 1 {
+        return 数组;
+    }
+    
+    令 中间 = 数组.长度() / 2;
+    令 基准 = 数组[中间];
+    令 左 = [T];
+    令 右 = [T];
+    
+    for i in 0..<数组.长度() {
+        if i != 中间 {
+            if 比较函数(数组[i], 基准) {
+                左.append(数组[i]);
+            } else {
+                右.append(数组[i]);
+            }
+        }
+    }
+    
+    令 排序左 = 快速排序(左, 比较函数);
+    令 排序右 = 快速排序(右, 比较函数);
+    
+    return [...排序左, 基准, ...排序右];
+}
+
+// 使用Python风格match语法的宠物处理函数
+函数 处理宠物(宠物: 宠物): string {
+    match 宠物 {
+        宠物{名称="贝贝", 类型=动物.狗} => "这是贝贝，一只可爱的小狗",
+        宠物{类型=动物.狗, 年龄=n} if n < 1 => f"这是一只{宠物.名称}，幼犬",
+        宠物{类型=动物.狗, 年龄=n} => f"这是一只{宠物.名称}，{n}岁的狗",
+        宠物{类型=动物.猫, 体重=n} if n < 5.0 => f"这是一只{宠物.名称}，小猫",
+        宠物{类型=动物.猫} => f"这是一只{宠物.名称}，猫",
+        宠物{类型=动物.鸟} => f"这是一只{宠物.名称}，鸟",
+        宠物{类型=动物.鱼} => f"这是一条{宠物.名称}，鱼",
+        宠物{类型=动物.其他(类型名)} => f"这是一只{宠物.名称}，{类型名}",
+        _ => "未知宠物"
+    }
+}
+
+// 演示中文关键字"设"和"令"的使用
+函数 中文关键字演示(): void {
+    io.println("中文关键字演示:");
+    
+    // 使用"设"（可变变量）
+    设 计数器 = 0;
+    计数器 += 1;
+    io.println(f"设（可变变量）: {计数器}");
+    
+    // 使用"令"（不可变变量）
+    令 常量值 = 42;
+    io.println(f"令（不可变变量）: {常量值}");
+    
+    // 中文命名的函数和变量
+    设 计算结果 = 计算平方(5);
+    io.println(f"中文函数调用: 5的平方是{计算结果}");
+}
+
+// 中文命名的函数
+函数 计算平方(数字: i32): i32 {
+    return 数字 * 数字;
+}
+
+// 配置Mold链接器的函数
+函数 配置链接器(): void {
+    io.println("\nMold链接器配置演示:");
+    
+    令 链接器设置 = {
+        "use_mold": true,
+        "optimization": "O2",
+        "lto_enabled": true,
+        "linker_flags": ["-O2", "-flto", "-pthread"]
+    };
+    
+    io.println("链接器设置:");
+    io.println(f"  使用Mold: {链接器设置["use_mold"]}");
+    io.println(f"  优化级别: {链接器设置["optimization"]}");
+    io.println(f"  启用LTO: {链接器设置["lto_enabled"]}");
+    io.println("  链接器标志:");
+    for 标志 in 链接器设置["linker_flags"] {
+        io.println(f"    - {标志}");
+    }
+    
+    io.println("\n推荐的Mold链接器优势:");
+    io.println("1. 极速链接，特别是大型项目");
+    io.println("2. 支持增量构建");
+    io.println("3. 与LTO优化良好配合");
+}
+
+// 演示MLIR优化的性能比较
+函数 mlir性能比较(): void {
+    io.println("\nMLIR优化性能比较:");
+    
+    令 数据大小 = 1000000;
+    令 数据 = [f64; 数据大小];
+    
+    // 初始化数据
+    for i in 0..<数据大小 {
+        数据[i] = i as f64 * 0.01;
+    }
+    
+    // 未优化版本
+    令 开始时间 = time.now();
+    未优化计算(数据);
+    令 结束时间 = time.now();
+    令 未优化时间 = time.duration(开始时间, 结束时间) as f64;
+    
+    // MLIR优化版本
+    开始时间 = time.now();
+    mlir优化计算(数据);
+    结束时间 = time.now();
+    令 优化时间 = time.duration(开始时间, 结束时间) as f64;
+    
+    io.println(f"未优化计算耗时: {未优化时间} 秒");
+    io.println(f"MLIR优化计算耗时: {优化时间} 秒");
+    io.println(f"性能提升: {(未优化时间 / 优化时间):.2f}x");
+}
+
+// 未优化的计算函数
+函数 未优化计算(数据: [f64]): f64 {
+    令 总和 = 0.0;
+    for i in 0..<数据.长度() {
+        总和 += 数据[i] * 数据[i] + 数据[i] * 2.0 + 1.0;
+    }
+    return 总和;
+}
+
+// MLIR优化的计算函数
+@mlir_optimize(["canonicalize", "cse", "vectorize", "affine-loop-fusion"])
+函数 mlir优化计算(数据: [f64]): f64 {
+    令 总和 = 0.0;
+    for i in 0..<数据.长度() {
+        总和 += 数据[i] * 数据[i] + 数据[i] * 2.0 + 1.0;
+    }
+    return 总和;
+}
+
+// 演示kz cl编译器的使用示例
+函数 kz_cl编译器演示(): void {
+    io.println("\nKz编译器 (kz cl) 使用示例:");
+    
+    io.println("常用编译命令:");
+    io.println("  kz cl main.kz                    # 基本编译");
+    io.println("  kz cl -o output.exe main.kz      # 指定输出文件");
+    io.println("  kz cl -O2 -flto main.kz          # 启用优化和LTO");
+    io.println("  kz cl -g main.kz                 # 生成调试信息");
+    io.println("  kz cl --python-style-match main.kz  # 启用Python风格match");
+    io.println("  kz cl --mlir-optimization main.kz   # 启用MLIR优化");
+    io.println("  kz cl --use-mold main.kz         # 使用Mold链接器");
+}
+
+// 演示kz mod包管理器的使用示例
+函数 kz_mod演示(): void {
+    io.println("\nKz包管理器 (kz mod) 使用示例:");
+    
+    io.println("包管理命令:");
+    io.println("  kz mod init                    # 初始化新项目");
+    io.println("  kz mod install kz-mlir         # 安装包");
+    io.println("  kz mod update kz-actor         # 更新包");
+    io.println("  kz mod remove kz-pool          # 卸载包");
+    io.println("  kz mod list                    # 列出已安装的包");
+    io.println("  kz mod search math             # 搜索包");
+    io.println("  kz mod show kz-asm             # 显示包信息");
+    io.println("  kz mod clean                   # 清理缓存");
+    io.println("\n忆阻器相关包安装:");
+    io.println("  kz mod install hardware-memristor    # 安装忆阻器接口库");
+    io.println("  kz mod install hardware-bus          # 安装总线通信库");
+    io.println("  kz mod install neural-memristor      # 安装神经网络库");
+}
+
+// 演示kz fmt格式化工具的使用
+函数 kz_fmt演示(): void {
+    io.println("\nKz格式化工具 (kz fmt) 使用示例:");
+    
+    io.println("格式化命令:");
+    io.println("  kz fmt main.kz                # 格式化单个文件");
+    io.println("  kz fmt src/                   # 格式化目录中的所有.kz文件");
+    io.println("  kz fmt -i 2 main.kz           # 使用2个空格缩进");
+    io.println("  kz fmt --tabs main.kz         # 使用制表符缩进");
+    io.println("  kz fmt --line-length 100 main.kz  # 设置最大行宽为100");
+    io.println("  kz fmt --crlf main.kz         # 使用CRLF行尾序列");
+    io.println("  kz fmt --check main.kz        # 检查是否需要格式化，不实际修改");
+    
+    io.println("\nkz fmt主要特性:");
+    io.println("  - 自动缩进管理");
+    io.println("  - 操作符周围空格标准化");
+    io.println("  - 括号和分隔符格式化");
+    io.println("  - 行尾空白移除");
+    io.println("  - 行尾序列标准化 (LF/CRLF)");
+    io.println("  - 支持目录递归格式化");
+    io.println("  - 自定义缩进宽度和类型");
+}
+
+// 演示忆阻器功能
+函数 忆阻器演示(): void {
+    io.println("\n=== 忆阻器支持演示 ===");
+    
+    // 1. 创建并初始化忆阻器模拟器
+    io.println("\n1. 忆阻器基本操作演示:");
+    设 mem_device = MemristorSimulator::new();
+    
+    // 初始化忆阻器数组
+    io.println("初始化3x3忆阻器数组...");
+    mem_device.initialize_array(3, 3);
+    
+    // 设置电压并读取电阻值
+    io.println("设置正向电压 (+1V) 到忆阻器 (0,0):");
+    mem_device.apply_voltage(0, 0, 1.0, 100.0); // 1V, 100ms
+    io.println(f"忆阻器 (0,0) 电阻值: {mem_device.read_resistance(0, 0)} Ω");
+    
+    io.println("设置负向电压 (-0.8V) 到忆阻器 (0,0):");
+    mem_device.apply_voltage(0, 0, -0.8, 100.0); // -0.8V, 100ms
+    io.println(f"忆阻器 (0,0) 电阻值: {mem_device.read_resistance(0, 0)} Ω");
+    
+    // 2. 批量操作演示
+    io.println("\n2. 批量操作演示:");
+    设 voltages = [[1.0, 0.9, 0.8], [0.7, 0.6, 0.5], [0.4, 0.3, 0.2]];
+    io.println("批量施加电压到3x3数组...");
+    mem_device.batch_apply_voltage(voltages, 50.0); // 50ms
+    
+    io.println("读取批量操作后的电阻矩阵:");
+    设 resistance_matrix = mem_device.read_resistance_matrix();
+    for row in resistance_matrix {
+        io.println(row.join(" "));
+    }
+    
+    // 3. 神经网络应用演示
+    io.println("\n3. 基于忆阻器的神经网络应用:");
+    io.println("创建2层忆阻神经网络:");
+    设 neural_layer = MemristorNeuralLayer::new(2, 3);
+    
+    // 初始化权重
+    neural_layer.initialize_weights();
+    
+    // 前向传播示例
+    设 input = [0.5, 0.7];
+    io.println(f"输入向量: {input}");
+    io.println("执行前向传播...");
+    设 output = neural_layer.forward(input);
+    io.println(f"输出向量: {output}");
+    
+    // 4. 编译器优化演示
+    io.println("\n4. 忆阻器编译优化演示:");
+    io.println("编译器提供的忆阻器特定优化:");
+    io.println("  - 批量操作合并");
+    io.println("  - 电压优化调度");
+    io.println("  - 操作融合");
+    io.println("  - 访问模式优化");
+    
+    // 5. 安全特性演示
+    io.println("\n5. 忆阻器安全操作演示:");
+    io.println("尝试施加超出安全范围的电压:");
+    try {
+        mem_device.apply_voltage(1, 1, 3.0, 100.0); // 过高电压
+    } catch (e) {
+        io.println(f"安全保护触发: {e.message}");
+    }
+    
+    io.println("\n忆阻器支持总结:");
+    io.println("1. 原生支持直接操作忆阻器设备");
+    io.println("2. 提供模拟器和物理设备接口");
+    io.println("3. 编译器级别的优化支持");
+    io.println("4. 神经网络计算加速");
+    io.println("5. 内置安全保护机制");
+}
+
+// 使用模式匹配处理各种数据结构
+函数 模式匹配综合演示(): void {
+    io.println("\n模式匹配综合演示:");
+    
+    // 匹配数字范围
+    令 分数 = 85;
+    match 分数 {
+        0...59 => io.println("不及格"),
+        60...69 => io.println("及格"),
+        70...79 => io.println("中等"),
+        80...89 => io.println("良好"),
+        90...100 => io.println("优秀"),
+        _ => io.println("分数无效")
+    }
+    
+    // 匹配元组
+    令 坐标 = (10, 20);
+    match 坐标 {
+        (0, 0) => io.println("原点"),
+        (x, 0) => io.println(f"在x轴上，x={x}"),
+        (0, y) => io.println(f"在y轴上，y={y}"),
+        (x, y) => io.println(f"在平面上，坐标({x}, {y})")
+    }
+    
+    // 匹配数组
+    令 列表 = [1, 2, 3, 4, 5];
+    match 列表 {
+        [] => io.println("空列表"),
+        [x] => io.println(f"单元素列表: {x}"),
+        [x, y] => io.println(f"双元素列表: {x}, {y}"),
+        [x, y, ..] => io.println(f"多元素列表，前两个: {x}, {y}")
+    }
+}
+
+// 主函数
+函数 主(): i32 {
+    io.println("=== Kz语言新特性综合演示 ===");
+    
+    // 1. 中文关键字演示
+    中文关键字演示();
+    
+    // 2. Python风格match语法演示
+    令 宠物列表 = [
+        宠物{名称="贝贝", 类型=动物.狗, 年龄=2, 体重=10.5},
+        宠物{名称="咪咪", 类型=动物.猫, 年龄=3, 体重=4.2},
+        宠物{名称="小金", 类型=动物.鱼, 年龄=1, 体重=0.1},
+        宠物{名称="小彩", 类型=动物.鸟, 年龄=1, 体重=0.2},
+        宠物{名称="小龟", 类型=动物.其他("乌龟"), 年龄=5, 体重=2.5}
+    ];
+    
+    io.println("\n宠物处理演示:");
+    for 宠物 in 宠物列表 {
+        io.println(处理宠物(宠物));
+    }
+    
+    // 3. 模式匹配综合演示
+    模式匹配综合演示();
+    
+    // 4. MLIR优化演示
+    mlir性能比较();
+    
+    // 5. Mold链接器演示
+    配置链接器();
+    
+    // 6. kz cl编译器演示
+    kz_cl编译器演示();
+    
+    // kz mod包管理器演示
+    kz_mod演示();
+    
+    // 8. 忆阻器支持演示
+    忆阻器演示();
+    
+    // 9. kz fmt格式化工具演示
+    kz_fmt演示();
+    
+    io.println("\n=== 演示完成 ===");
+    return 0;
+}

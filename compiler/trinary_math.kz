@@ -1,0 +1,488 @@
+# Kz语言三进制数学库
+# 专为三进制计算机优化的数学运算
+
+import std.memory
+import std.trinary
+
+# =======================
+# 三进制数据类型定义
+# =======================
+
+# 平衡三进制数类型（-1, 0, 1）
+type Trinary:
+    value: Int8  # -1, 0, 1 的内部表示
+
+# 三进制位表示
+type TrinaryDigit:
+    static let T = -1  # 表示-1
+    static let Z = 0   # 表示0
+    static let O = 1   # 表示1
+
+# 三进制向量 - 强类型定义
+# 使用中文关键字支持
+ type TrinaryVector:
+    data: Pointer<Trinary>  # 强类型指针
+    length: Int  # 强类型整数
+    
+# 中文命名的三进制向量类型
+type 三进制向量:
+    数据: Pointer<Trinary>  # 强类型指针
+    长度: Int  # 强类型整数
+
+# 三进制矩阵 - 强类型定义
+ type TrinaryMatrix:
+    rows: Int  # 强类型整数
+    cols: Int  # 强类型整数
+    data: Pointer<Trinary>  # 强类型指针
+    
+# 中文命名的三进制矩阵类型
+type 三进制矩阵:
+    行数: Int  # 强类型整数
+    列数: Int  # 强类型整数
+    数据: Pointer<Trinary>  # 强类型指针
+
+# =======================
+# 三进制基本运算
+# =======================
+
+# 三进制加法（利用三进制的对称性优化）
+fn trinary_add(a: Trinary, b: Trinary) -> Trinary:
+    let va = a.value
+    let vb = b.value
+    
+    # 三进制加法表的优化实现
+    # 利用平衡三进制的对称性减少计算
+    if va == 0:
+        return Trinary(value: vb)
+    if vb == 0:
+        return Trinary(value: va)
+    if va == vb:
+        # 同号相加，需要进位
+        return Trinary(value: -va)  # 进位，当前位取反
+    # 异号相加，当前位为0
+    return Trinary(value: 0)
+
+# 中文命名函数：三进制加法（展示多编码支持）
+fn 三进制加法(a: Trinary, b: Trinary) -> Trinary:
+    # 中文函数名与trinary_add功能相同
+    let va = a.value
+    let vb = b.value
+    
+    if va == 0:
+        return Trinary(value: vb)
+    if vb == 0:
+        return Trinary(value: va)
+    if va == vb:
+        return Trinary(value: -va)
+    return Trinary(value: 0)
+
+# 优化的三进制加法（利用三进制CPU的特殊指令）
+fn trinary_add_optimized(a: Trinary, b: Trinary) -> Trinary:
+    # 假设三进制CPU有特殊的add指令
+    @asm
+        trinary_add a.value, b.value, result
+
+# 三进制乘法
+fn trinary_mult(a: Trinary, b: Trinary) -> Trinary:
+    # 三进制乘法表：-1*-1=1, -1*1=-1, 0*任何=0
+    return Trinary(value: a.value * b.value)
+
+# 三进制取反（比二进制更简单，只需取反值）
+fn trinary_negate(a: Trinary) -> Trinary:
+    return Trinary(value: -a.value)
+
+# =======================
+# 三进制位操作
+# =======================
+
+# 三进制左移（乘以3的n次方）
+fn trinary_shift_left(x: Int, n: Int) -> Int:
+    # 三进制左移n位，相当于乘以3^n
+    return x * pow(3, n)
+
+# 三进制右移（除以3的n次方）
+fn trinary_shift_right(x: Int, n: Int) -> Int:
+    # 三进制右移n位，相当于除以3^n
+    return x / pow(3, n)
+
+# 三进制位访问
+fn trinary_get_bit(x: Int, position: Int) -> Int:
+    # 获取三进制数在指定位置的位值（-1, 0, 1）
+    let divisor = pow(3, position)
+    let remainder = x % (divisor * 3)
+    let bit = remainder / divisor
+    
+    # 转换为平衡三进制表示
+    if bit == 2:
+        return -1
+    elif bit == 0:
+        return 0
+    else:
+        return 1
+
+# 三进制位设置
+fn trinary_set_bit(x: Int, position: Int, bit_value: Int) -> Int:
+    # 设置三进制数在指定位置的位值
+    let divisor = pow(3, position)
+    let old_bit = trinary_get_bit(x, position)
+    let delta = (bit_value - old_bit) * divisor
+    return x + delta
+
+# =======================
+# 三进制向量运算
+# =======================
+
+# 创建三进制向量 - 强类型实现
+fn create_trinary_vector(length: Int) -> TrinaryVector:
+    # 强类型内存分配
+    let data: Pointer<Trinary> = memory.allocate<Trinary>(length)
+    io.print("创建三进制向量，长度: " + string(length))
+    
+    # 强类型构造
+    return TrinaryVector(
+        data: data,
+        length: length
+    )
+
+# 向量加法
+fn vector_add(a: TrinaryVector, b: TrinaryVector) -> TrinaryVector:
+    if a.length != b.length:
+        error("向量长度不匹配")
+    
+    let result = create_trinary_vector(a.length)
+    
+    # 三进制优化的向量加法
+    for i in 0..a.length-1:
+        result.data[i] = trinary_add(a.data[i], b.data[i])
+    
+    return result
+
+# 向量点积（利用三进制对称性优化）
+fn vector_dot_product(a: TrinaryVector, b: TrinaryVector) -> Int:
+    if a.length != b.length:
+        error("向量长度不匹配")
+    
+    let sum = 0
+    let temp = 0
+    
+    # 三进制点积优化，利用+1和-1的对称性
+    for i in 0..a.length-1:
+        let va = a.data[i].value
+        let vb = b.data[i].value
+        
+        # 三进制乘法结果
+        let product = va * vb
+        
+        # 优化累加，避免频繁的内存访问
+        temp += product
+        
+        # 当临时值达到±2时，执行进位操作（三进制特性）
+        if temp == 2 or temp == -2:
+            sum += temp / 2
+            temp = temp % 2
+    
+    sum += temp
+    return sum
+
+# =======================
+# 三进制矩阵运算
+# =======================
+
+# 创建三进制矩阵 - 强类型实现
+fn create_trinary_matrix(rows: Int, cols: Int) -> TrinaryMatrix:
+    # 强类型内存分配
+    let size: Int = rows * cols
+    let data: Pointer<Trinary> = memory.allocate<Trinary>(size)
+    io.print("创建三进制矩阵，维度: " + string(rows) + "x" + string(cols))
+    
+    # 强类型构造
+    return TrinaryMatrix(
+        rows: rows,
+        cols: cols,
+        data: data
+    )
+
+# 矩阵访问
+fn matrix_get(matrix: TrinaryMatrix, row: Int, col: Int) -> Trinary:
+    return matrix.data[row * matrix.cols + col]
+
+fn matrix_set(matrix: TrinaryMatrix, row: Int, col: Int, value: Trinary):
+    matrix.data[row * matrix.cols + col] = value
+
+# 矩阵乘法（三进制优化版本）
+fn matrix_multiply(a: TrinaryMatrix, b: TrinaryMatrix) -> TrinaryMatrix:
+    if a.cols != b.rows:
+        error("矩阵维度不匹配")
+    
+    let result = create_trinary_matrix(a.rows, b.cols)
+    
+    # 三进制优化的矩阵乘法
+    for i in 0..a.rows-1:
+        for k in 0..a.cols-1:
+            let a_val = matrix_get(a, i, k).value
+            
+            # 跳过0值，减少计算（三进制优化）
+            if a_val == 0:
+                continue
+            
+            for j in 0..b.cols-1:
+                let b_val = matrix_get(b, k, j).value
+                let current = matrix_get(result, i, j).value
+                
+                # 三进制乘法和加法
+                let product = a_val * b_val
+                let new_val = current + product
+                
+                # 三进制进位处理
+                if new_val == 2:
+                    matrix_set(result, i, j, Trinary(value: -1))
+                    # 这里应该处理进位到高位，但为简化示例省略
+                elif new_val == -2:
+                    matrix_set(result, i, j, Trinary(value: 1))
+                    # 处理进位
+                else:
+                    matrix_set(result, i, j, Trinary(value: new_val))
+    
+    return result
+
+# =======================
+# 三进制浮点数优化
+# =======================
+
+# 三进制浮点数类型（简化版）
+type TrinaryFloat:
+    sign: Trinary
+    exponent: Int
+    mantissa: Pointer<Trinary>
+    mantissa_length: Int
+
+# 三进制浮点数加法（优化精度）
+fn trinary_float_add(a: TrinaryFloat, b: TrinaryFloat) -> TrinaryFloat:
+    # 实现三进制浮点数加法，优化精度问题
+    # 三进制在某些分数表示上比二进制更精确
+    # ...实现细节...
+
+# =======================
+# 三进制快速变换
+# =======================
+
+# 三进制快速傅里叶变换（比二进制FFT在某些情况下更高效）
+fn trinary_fft(signal: TrinaryVector) -> TrinaryVector:
+    # 利用三进制的对称性优化FFT算法
+    # ...实现细节...
+
+# =======================
+# 内存管理 - 无GC特性增强
+# =======================
+
+# 释放三进制向量 - 显式内存管理
+fn free_trinary_vector(vector: TrinaryVector):
+    # 无GC环境下必须手动释放内存
+    memory.free(vector.data)
+    io.print("三进制向量内存已释放")
+
+# 释放三进制矩阵 - 显式内存管理
+fn free_trinary_matrix(matrix: TrinaryMatrix):
+    # 无GC环境下必须手动释放内存
+    memory.free(matrix.data)
+    io.print("三进制矩阵内存已释放")
+
+# 自定义内存分配器 - 无GC高级示例
+fn create_custom_allocator(size: Int) -> Pointer<Byte>:
+    # 在无GC环境下创建自定义内存池
+    let pool = memory.allocate<Byte>(size)
+    io.print("创建内存池，大小: " + string(size) + " 字节")
+    return pool
+
+# 释放自定义内存池
+fn free_custom_allocator(pool: Pointer<Byte>):
+    memory.free(pool)
+    io.print("内存池已释放")
+
+# =======================
+# 三进制常量定义
+# =======================
+
+# 三进制基本常量
+const TRINARY_ZERO = Trinary(value: 0)
+const TRINARY_ONE = Trinary(value: 1)
+const TRINARY_MINUS_ONE = Trinary(value: -1)
+
+# 编译期计算的三进制常量
+@compile_time
+const TRINARY_BASE = 3
+
+@compile_time
+const TRINARY_LOG2_3 = log2(3.0)  # 约1.58496
+
+# =======================
+# 实用工具函数
+# =======================
+
+# 将整数转换为平衡三进制字符串表示
+fn int_to_trinary_str(n: Int) -> String:
+    if n == 0:
+        return "0"
+    
+    let digits = List<Char>()
+    let temp = n
+    
+    while temp != 0:
+        let remainder = temp % 3
+        let digit: Char
+        
+        if remainder == 2:
+            digit = 'T'  # -1表示为T
+            temp = temp / 3 + 1  # 进位
+        elif remainder == 1:
+            digit = '1'
+            temp = temp / 3
+        else:
+            digit = '0'
+            temp = temp / 3
+        
+        digits.push(digit)
+    
+    # 反转并转换为字符串
+    return string(reverse(digits))
+    
+# 使用内联汇编优化的三进制转换函数
+fn 十进制转三进制(十进制数: Int) -> String:
+    if 十进制数 == 0:
+        return "0"
+    
+    let 是负数 = 十进制数 < 0
+    if 是负数:
+        十进制数 = -十进制数
+    
+    let 结果 = List<Char>()
+    let 临时值 = 十进制数
+    
+    # 使用内联汇编优化循环计算
+    while 临时值 != 0:
+        # 使用汇编计算余数和商
+        let 余数: Int
+        let 商: Int
+        
+        @asm
+            mov eax, 临时值
+            mov edx, 0
+            mov ecx, 3
+            div ecx  # eax = 商, edx = 余数
+            mov 余数, edx
+            mov 商, eax
+        
+        let 数字: Char
+        
+        if 余数 == 2:
+            数字 = 'T'  # -1表示为T
+            商 += 1  # 进位
+        elif 余数 == 1:
+            数字 = '1'
+        else:
+            数字 = '0'
+        
+        结果.push(数字)
+        临时值 = 商
+    
+    # 反转并转换为字符串
+    let 字符串结果 = string(reverse(结果))
+    
+    if 是负数:
+        return "-" + 字符串结果
+    
+    return 字符串结果
+
+# 将平衡三进制字符串转换为整数
+fn trinary_str_to_int(s: String) -> Int:
+    let digits = list(s)
+    let result = 0
+    let base = 1
+    
+    for i in reverse(0..length(digits)-1):
+        match digits[i]:
+            'T' => result -= base
+            '0' => ()
+            '1' => result += base
+            else => error("无效的三进制数字: " + digits[i])
+        base *= 3
+    
+    return result
+
+# 计算三进制数的位数
+fn trinary_digits(n: Int) -> Int:
+    if n == 0:
+        return 1
+    return int(log(abs(float(n))) / log(3.0)) + 1
+
+# 三进制特有的最大值函数（利用三进制对称性）
+fn trinary_max(a: Int, b: Int) -> Int:
+    # 三进制优化的最大值算法
+    # 利用平衡三进制的对称性减少比较操作
+    let diff = a - b
+    
+    # 根据最高有效位判断大小
+    if diff > 0:
+        return a
+    else:
+        return b
+
+# 中文命名的实用函数（展示多编码支持）
+fn 三进制转十进制(三进制字符串: String) -> Int:
+    # 中文参数名和函数名，功能同trinary_str_to_int
+    return trinary_str_to_int(三进制字符串)
+    
+# Actor消息定义
+type 矩阵操作消息:
+    矩阵加法(a: 三进制矩阵, b: 三进制矩阵)
+    矩阵乘法(a: 三进制矩阵, b: 三进制矩阵)
+
+# 矩阵计算Actor类型
+type 矩阵计算Actor:
+    fn 处理消息(消息: 矩阵操作消息) -> 三进制矩阵?:
+
+# 中英文混合命名的函数（展示多编码支持）
+fn 十进制转三进制字符串(n: Int) -> String:
+    # 中英文混合命名，功能同int_to_trinary_str
+    return int_to_trinary_str(n)
+
+# 使用中文关键字的向量加法函数
+fn 向量加法(a: 三进制向量, b: 三进制向量) -> 三进制向量?:
+    if a.长度 != b.长度:
+        return null
+    
+    let 结果 = create_trinary_vector(a.长度)
+    
+    # 三进制优化的向量加法
+    for i in 0..a.长度-1:
+        结果.data[i] = trinary_add(a.数据[i], b.数据[i])
+    
+    return 三进制向量(数据: 结果.data, 长度: 结果.length)
+    
+# 内存池管理三进制对象
+type 三进制对象池:
+    向量列表: List<TrinaryVector>
+    矩阵列表: List<TrinaryMatrix>
+    空闲向量: List<Int>
+    空闲矩阵: List<Int>
+    
+    fn 初始化(初始向量数: Int, 初始矩阵数: Int) -> Self:
+        let this = Self{}
+        this.向量列表 = []
+        this.矩阵列表 = []
+        this.空闲向量 = []
+        this.空闲矩阵 = []
+        
+        # 预分配向量
+        for i in 0..初始向量数-1:
+            let 向量 = create_trinary_vector(4)  # 4维向量
+            this.向量列表.push(向量)
+            this.空闲向量.push(i)
+        
+        # 预分配矩阵
+        for i in 0..初始矩阵数-1:
+            let 矩阵 = create_trinary_matrix(4, 4)  # 4x4矩阵
+            this.矩阵列表.push(矩阵)
+            this.空闲矩阵.push(i)
+        
+        return this

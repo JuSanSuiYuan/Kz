@@ -1,0 +1,463 @@
+# Kz语言池化内存与池化显存示例
+# 许可证: MulanPSL-2.0
+# 行尾序列: LF
+
+# 导入必要的模块
+import memory
+import gpu
+import concurrent
+import time
+
+# 基本内存池示例
+class 基本内存池演示 {
+    令 内存池: memory.MemoryPool
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        # 创建内存池，初始大小1MB，块大小64字节，最大大小10MB
+        this.内存池 = memory.create_memory_pool(
+            initial_size: 1024 * 1024,   # 1MB
+            block_size: 64,             # 64字节块
+            max_size: 10 * 1024 * 1024, # 10MB
+            enable_stats: true          # 启用统计
+        )
+        return this
+    }
+    
+    fn 演示分配释放() -> void {
+        print("\n1. 基本内存分配与释放:")
+        
+        # 分配内存
+        设 分配结果1 = this.内存池.allocate(128)  # 分配128字节
+        设 分配结果2 = this.内存池.allocate(256)  # 分配256字节
+        
+        # 检查分配是否成功
+        if 分配结果1.is_ok() && 分配结果2.is_ok():
+            设 内存块1 = 分配结果1.unwrap()
+            设 内存块2 = 分配结果2.unwrap()
+            
+            print(f"成功分配内存块1: {内存块1.size} 字节")
+            print(f"成功分配内存块2: {内存块2.size} 字节")
+            
+            # 使用内存（示例）
+            设 数据 = [byte](内存块1.size)
+            for i in 0..内存块1.size-1:
+                数据[i] = byte(i % 256)
+            
+            # 释放内存
+            this.内存池.free(内存块1)
+            this.内存池.free(内存块2)
+            print("已释放所有内存块")
+        else:
+            print("内存分配失败")
+    }
+    
+    fn 演示性能对比() -> void {
+        print("\n2. 内存池与直接分配性能对比:")
+        
+        令 分配次数 = 100000
+        令 块大小 = 64
+        
+        # 测试直接分配
+        设 直接分配开始时间 = time.now()
+        设 直接分配列表 = []
+        
+        for i in 0..分配次数-1:
+            设 块 = memory.allocate(块大小)
+            直接分配列表.append(块)
+        
+        # 释放内存
+        for 块 in 直接分配列表:
+            memory.free(块)
+        
+        设 直接分配结束时间 = time.now()
+        设 直接分配耗时 = 直接分配结束时间 - 直接分配开始时间
+        
+        # 测试内存池分配
+        设 池分配开始时间 = time.now()
+        设 池分配列表 = []
+        
+        for i in 0..分配次数-1:
+            设 结果 = this.内存池.allocate(块大小)
+            if 结果.is_ok():
+                池分配列表.append(结果.unwrap())
+        
+        # 释放内存
+        for 块 in 池分配列表:
+            this.内存池.free(块)
+        
+        设 池分配结束时间 = time.now()
+        设 池分配耗时 = 池分配结束时间 - 池分配开始时间
+        
+        print(f"直接分配 {分配次数} 次耗时: {直接分配耗时} 毫秒")
+        print(f"内存池分配 {分配次数} 次耗时: {池分配耗时} 毫秒")
+        print(f"性能提升: {(直接分配耗时 / 池分配耗时):.2f}x")
+    }
+    
+    fn 显示统计信息() -> void {
+        设 统计 = this.内存池.get_stats()
+        print("\n3. 内存池统计信息:")
+        print(f"已分配块数: {统计.allocated_blocks}")
+        print(f"空闲块数: {统计.free_blocks}")
+        print(f"总内存大小: {统计.total_size} 字节")
+        print(f"已使用内存: {统计.used_size} 字节")
+        print(f"内存使用率: {(统计.used_size * 100.0 / 统计.total_size):.2f}%")
+        print(f"碎片率: {(统计.fragmentation * 100.0):.2f}%")
+    }
+    
+    fn 销毁() -> void {
+        this.内存池.destroy()
+    }
+}
+
+# 对象池示例
+class 三向量 {
+    x: float
+    y: float
+    z: float
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        this.x = 0.0
+        this.y = 0.0
+        this.z = 0.0
+        return this
+    }
+    
+    fn 设置(x: float, y: float, z: float) -> void {
+        this.x = x
+        this.y = y
+        this.z = z
+    }
+    
+    fn 归一化() -> Self {
+        设 长度 = math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z)
+        if 长度 > 0.0:
+            this.x = this.x / 长度
+            this.y = this.y / 长度
+            this.z = this.z / 长度
+        return this
+    }
+    
+    fn 点积(other: 三向量) -> float {
+        return this.x * other.x + this.y * other.y + this.z * other.z
+    }
+}
+
+class 对象池演示 {
+    令 向量池: memory.ObjectPool<三向量>
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        # 创建三向量对象池
+        this.向量池 = memory.create_object_pool<三向量>(
+            initial_size: 100,  # 初始100个对象
+            max_size: 1000,     # 最大1000个对象
+            factory_fn: fn() -> 三向量 {
+                return 三向量{}.初始化()
+            }
+        )
+        return this
+    }
+    
+    fn 演示对象复用() -> void {
+        print("\n4. 对象池复用示例:")
+        
+        # 从池中获取对象
+        设 向量1 = this.向量池.allocate()
+        设 向量2 = this.向量池.allocate()
+        设 向量3 = this.向量池.allocate()
+        
+        # 使用对象
+        向量1.设置(1.0, 2.0, 3.0)
+        向量2.设置(4.0, 5.0, 6.0)
+        
+        # 计算点积
+        设 点积结果 = 向量1.点积(向量2)
+        print(f"向量1({向量1.x}, {向量1.y}, {向量1.z})")
+        print(f"向量2({向量2.x}, {向量2.y}, {向量2.z})")
+        print(f"点积结果: {点积结果}")
+        
+        # 复用向量3进行归一化计算
+        向量3.设置(向量1.x, 向量1.y, 向量1.z)
+        向量3.归一化()
+        print(f"向量1归一化后: ({向量3.x:.4f}, {向量3.y:.4f}, {向量3.z:.4f})")
+        
+        # 归还对象到池中
+        this.向量池.deallocate(向量1)
+        this.向量池.deallocate(向量2)
+        this.向量池.deallocate(向量3)
+        
+        # 再次获取对象并验证复用
+        设 复用向量 = this.向量池.allocate()
+        print(f"复用向量初始值: ({复用向量.x}, {复用向量.y}, {复用向量.z})")
+        
+        # 归还复用的对象
+        this.向量池.deallocate(复用向量)
+    }
+    
+    fn 演示并发对象池() -> void {
+        print("\n5. 并发对象池使用:")
+        
+        令 协程数 = 8
+        令 每协程操作数 = 1000
+        令 等待组 = concurrent.WaitGroup{}
+        等待组.add(协程数)
+        
+        for 协程索引 in 0..协程数-1:
+            spawn fn(协程索引: int) {
+                defer 等待组.done()
+                
+                for i in 0..每协程操作数-1:
+                    # 从池中获取对象
+                    设 向量 = this.向量池.allocate()
+                    
+                    # 执行一些操作
+                    向量.设置(float(协程索引), float(i), float(协程索引 + i))
+                    向量.归一化()
+                    
+                    # 归还对象
+                    this.向量池.deallocate(向量)
+                }
+                
+                print(f"协程 {协程索引} 完成")
+            }(协程索引)
+        
+        # 等待所有协程完成
+        等待组.wait()
+        
+        print("所有协程执行完成")
+        print(f"对象池统计: 已分配={this.向量池.allocated_count()}, 空闲={this.向量池.available_count()}")
+    }
+    
+    fn 销毁() -> void {
+        this.向量池.destroy()
+    }
+}
+
+# GPU显存池示例
+class 显存池演示 {
+    令 显存池: gpu.MemoryPool
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        # 创建GPU显存池，初始16MB
+        this.显存池 = gpu.create_memory_pool(
+            initial_size: 16 * 1024 * 1024,  # 16MB
+            block_size: 64,
+            enable_pinning: true,  # 启用内存固定（提高CPU-GPU传输性能）
+            max_size: 128 * 1024 * 1024  # 最大128MB
+        )
+        return this
+    }
+    
+    fn 演示显存分配() -> void {
+        print("\n6. GPU显存分配示例:")
+        
+        # 分配显存
+        设 显存分配结果 = this.显存池.allocate(1024 * 1024)  # 1MB显存
+        
+        if 显存分配结果.is_ok():
+            设 显存块 = 显存分配结果.unwrap()
+            print(f"成功分配显存: {显存块.size} 字节")
+            
+            # 创建固定内存用于CPU-GPU传输
+            设 固定内存分配 = this.显存池.allocate_pinned(1024 * 1024)
+            
+            if 固定内存分配.is_ok():
+                设 固定内存 = 固定内存分配.unwrap()
+                print("成功分配固定内存用于CPU-GPU传输")
+                
+                # 模拟数据传输（实际项目中会使用cudaMemcpy等）
+                print("模拟CPU到GPU的数据传输")
+                
+                # 释放资源
+                this.显存池.free_pinned(固定内存)
+            
+            # 释放显存
+            this.显存池.free(显存块)
+            print("已释放显存")
+        else:
+            print("显存分配失败")
+    }
+    
+    fn 演示批量显存操作() -> void {
+        print("\n7. 批量显存操作示例:")
+        
+        令 批量大小 = 10
+        设 显存块列表 = []
+        
+        # 批量分配
+        print(f"批量分配 {批量大小} 个显存块")
+        for i in 0..批量大小-1:
+            设 大小 = (i + 1) * 1024 * 1024  # 1MB到10MB递增
+            设 结果 = this.显存池.allocate(大小)
+            if 结果.is_ok():
+                显存块列表.append(结果.unwrap())
+                print(f"  分配显存块 {i}: {大小} 字节")
+        
+        # 批量释放
+        print("\n批量释放显存块")
+        for i, 块 in enumerate(显存块列表):
+            this.显存池.free(块)
+            print(f"  释放显存块 {i}")
+    }
+    
+    fn 显示显存统计() -> void {
+        设 统计 = this.显存池.get_stats()
+        print("\n8. 显存池统计信息:")
+        print(f"总显存大小: {统计.total_size} 字节 ({统计.total_size / (1024*1024):.2f} MB)")
+        print(f"已使用显存: {统计.used_size} 字节 ({统计.used_size / (1024*1024):.2f} MB)")
+        print(f"显存使用率: {(统计.used_size * 100.0 / 统计.total_size):.2f}%")
+        print(f"固定内存大小: {统计.pinned_size} 字节")
+    }
+    
+    fn 销毁() -> void {
+        this.显存池.destroy()
+    }
+}
+
+# 高级内存池管理示例 - 分层内存池
+class 分层内存池 {
+    令 小对象池: memory.MemoryPool  # < 1KB
+    令 中对象池: memory.MemoryPool  # 1KB - 64KB
+    令 大对象池: memory.MemoryPool  # 64KB - 1MB
+    
+    fn 初始化() -> Self {
+        设 this = Self{}
+        
+        # 创建不同大小的内存池
+        this.小对象池 = memory.create_memory_pool(
+            initial_size: 5 * 1024 * 1024,   # 5MB
+            block_size: 64,
+            max_size: 20 * 1024 * 1024       # 20MB
+        )
+        
+        this.中对象池 = memory.create_memory_pool(
+            initial_size: 10 * 1024 * 1024,  # 10MB
+            block_size: 1024,                # 1KB块
+            max_size: 50 * 1024 * 1024       # 50MB
+        )
+        
+        this.大对象池 = memory.create_memory_pool(
+            initial_size: 20 * 1024 * 1024,  # 20MB
+            block_size: 65536,               # 64KB块
+            max_size: 200 * 1024 * 1024      # 200MB
+        )
+        
+        return this
+    }
+    
+    fn 分配(大小: int) -> memory.MemoryBlock? {
+        # 根据大小选择合适的内存池
+        if 大小 <= 1024:  # 1KB
+            设 结果 = this.小对象池.allocate(大小)
+            if 结果.is_ok():
+                return 结果.unwrap()
+        elif 大小 <= 65536:  # 64KB
+            设 结果 = this.中对象池.allocate(大小)
+            if 结果.is_ok():
+                return 结果.unwrap()
+        elif 大小 <= 1048576:  # 1MB
+            设 结果 = this.大对象池.allocate(大小)
+            if 结果.is_ok():
+                return 结果.unwrap()
+        
+        # 超大对象使用直接分配
+        return memory.allocate(大小)
+    }
+    
+    fn 释放(块: memory.MemoryBlock) -> void {
+        # 根据块大小释放到对应的内存池
+        if 块.size <= 1024:
+            this.小对象池.free(块)
+        elif 块.size <= 65536:
+            this.中对象池.free(块)
+        elif 块.size <= 1048576:
+            this.大对象池.free(块)
+        else:
+            # 超大对象直接释放
+            memory.free(块)
+    }
+    
+    fn 显示分层统计() -> void {
+        print("\n9. 分层内存池统计:")
+        
+        设 小池统计 = this.小对象池.get_stats()
+        print(f"小对象池 (<=1KB):")
+        print(f"  已使用: {小池统计.used_size / (1024):.2f} KB, 使用率: {(小池统计.used_size * 100.0 / 小池统计.total_size):.2f}%")
+        
+        设 中池统计 = this.中对象池.get_stats()
+        print(f"中对象池 (1KB-64KB):")
+        print(f"  已使用: {中池统计.used_size / (1024):.2f} KB, 使用率: {(中池统计.used_size * 100.0 / 中池统计.total_size):.2f}%")
+        
+        设 大池统计 = this.大对象池.get_stats()
+        print(f"大对象池 (64KB-1MB):")
+        print(f"  已使用: {大池统计.used_size / (1024*1024):.2f} MB, 使用率: {(大池统计.used_size * 100.0 / 大池统计.total_size):.2f}%")
+    }
+    
+    fn 销毁() -> void {
+        this.小对象池.destroy()
+        this.中对象池.destroy()
+        this.大对象池.destroy()
+    }
+}
+
+# 主函数
+fn main() -> int {
+    print("Kz语言池化内存与池化显存示例程序")
+    print("=================================")
+    
+    # 演示基本内存池
+    设 基本池演示 = 基本内存池演示{}.初始化()
+    基本池演示.演示分配释放()
+    基本池演示.演示性能对比()
+    基本池演示.显示统计信息()
+    基本池演示.销毁()
+    
+    # 演示对象池
+    设 对象池演示 = 对象池演示{}.初始化()
+    对象池演示.演示对象复用()
+    对象池演示.演示并发对象池()
+    对象池演示.销毁()
+    
+    # 演示显存池（模拟）
+    设 显存池演示 = 显存池演示{}.初始化()
+    显存池演示.演示显存分配()
+    显存池演示.演示批量显存操作()
+    显存池演示.显示显存统计()
+    显存池演示.销毁()
+    
+    # 演示分层内存池
+    设 分层池 = 分层内存池{}.初始化()
+    
+    # 测试不同大小的分配
+    设 块1 = 分层池.分配(512)    # 小对象
+    设 块2 = 分层池.分配(1024 * 10)  # 中对象
+    设 块3 = 分层池.分配(1024 * 200) # 大对象
+    
+    print("\n测试分层内存池分配:")
+    print(f"分配512字节: {'成功' if 块1 != null else '失败'}")
+    print(f"分配10KB: {'成功' if 块2 != null else '失败'}")
+    print(f"分配200KB: {'成功' if 块3 != null else '失败'}")
+    
+    # 释放内存
+    if 块1 != null:
+        分层池.释放(块1)
+    if 块2 != null:
+        分层池.释放(块2)
+    if 块3 != null:
+        分层池.释放(块3)
+    
+    分层池.显示分层统计()
+    分层池.销毁()
+    
+    print("\n所有池化内存/显存示例演示完成")
+    print("总结:")
+    print("1. 内存池显著提升小内存块分配性能")
+    print("2. 对象池减少对象创建/销毁开销")
+    print("3. 显存池优化GPU内存管理")
+    print("4. 分层内存池适应不同大小内存需求")
+    
+    return 0
+}

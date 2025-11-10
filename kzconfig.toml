@@ -1,0 +1,116 @@
+# Kz编译器配置文件
+# 文件名: kzconfig.toml
+# 许可证: 木兰2.0许可证 (MulanPSL-2.0)
+
+# 编译器基本设置
+[compiler]
+name = "Kzc"
+version = "0.1.0"
+default_target = "trinary_cpu"
+type_system = "static"  # 静态类型系统
+strong_typing = true  # 强类型
+line_ending = "LF"  # 行尾序列设置为LF
+actor_model = true       # 启用Erlang风格Actor并发模型
+c3_modularity = true     # 启用C3风格模块化系统
+inline_asm = true        # 启用内联汇编支持
+chinese_keywords = true  # 启用中文关键字支持
+python_style_match = true  # 启用Python风格match语法
+mlir_optimization = true  # 启用MLIR优化
+mold_linker = true        # 启用Mold链接器
+memristor_support = true  # 启用忆阻器支持
+
+# 三进制优化设置
+[compiler.trinary]
+mode = "balanced"  # 平衡三进制模式 (-1, 0, 1)
+memory_encoding = "ternary"  # 三进制内存编码
+register_optimization = true  # 寄存器优化
+instruction_selection = "trinary_priority"  # 指令选择策略
+
+# 优化级别
+[compiler.optimization]
+level = "O3"  # O0, O1, O2, O3
+link_time_optimization = true
+compile_time_computation = true  # 编译期计算
+dead_code_elimination = true
+inline_threshold = 100
+
+# 代码生成
+[compiler.codegen]
+triple = "trinary-unknown-unknown"
+data_layout = "e-m:e-p:32:32:32-i1:3:8-i8:3:8-i16:3:16-i32:3:32-f32:3:32-f64:3:64-n8:16:32:64"
+
+# 内存管理
+[compiler.memory]
+default_allocator = "kz_alloc"
+explicit_management = true
+garbage_collection = false  # 无GC，完全手动管理内存
+unsafe_mode = false
+memory_pooling = true       # 启用内存池管理
+memory_pool_size = 65536    # 默认内存池大小（字节）
+memory_pool_min_block = 16  # 内存池最小块大小（字节）
+memory_pool_max_block = 4096  # 内存池最大块大小（字节）
+memory_alignment = 16       # 内存对齐（16字节）
+
+[compiler.gpu]
+memory_pooling = true       # 启用显存池管理
+memory_pool_size = 16777216  # 默认显存池大小（16MB）
+enable_gpu = true           # 启用GPU支持
+enable_cuda = true          # 启用CUDA支持
+enable_rocm = false         # 启用ROCm支持
+
+# 硬件访问
+[compiler.hardware]
+cpu_access = "direct"
+gpu_access = "supported"
+vendor_extensions = ["huawei"]
+
+# 调试信息
+[compiler.debug]
+enabled = true
+source_map = true
+verbose_level = "info"  # error, warn, info, debug, trace
+
+# 插件系统
+[compiler.plugins]
+enabled = true
+search_paths = ["./plugins", "$HOME/.kz/plugins"]
+
+# 缓存设置
+[compiler.cache]
+enabled = true
+directory = "$HOME/.kz/cache"
+size_limit = "1GB"
+
+# 并发编译
+[compiler.concurrent]
+enabled = true
+jobs = 8
+
+# 三进制特定指令集
+[compiler.trinary_instruction_set]
+version = "1.0"
+features = ["balanced_ops", "trinary_shift", "symmetric_arithmetic"]
+
+# MLIR优化配置
+[compiler.mlir]
+enable = true                     # 启用MLIR
+optimization_passes = ["canonicalize", "cse", "loop-opt", "vectorize"]
+target_dialect = "llvm"
+
+# 链接器配置
+[compiler.link]
+use_mold = true                   # 使用Mold链接器
+mold_path = "mold"                # Mold路径
+linker_flags = ["-O2", "-flto"]   # 链接器标志
+
+[compiler.memristor]
+# 忆阻器支持配置
+enabled = true
+io_timeout_ms = 1000
+batch_size_limit = 256
+default_bus_type = "SPI"
+simulator_enabled = true
+physical_device_enabled = false
+voltage_safety_limits = [-5.0, 5.0]
+time_safety_limits = [0.001, 100.0]
+memristor_pattern_match = true # 启用忆阻器特定的模式匹配语法
