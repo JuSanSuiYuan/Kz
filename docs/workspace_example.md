@@ -131,21 +131,21 @@ benchmark = "^0.5.0"
 ```bash
 # 在根目录执行
 kz mod install --workspace
-kzc --workspace
+kz cl --workspace
 ```
 
 ### 编译单个包
 
 ```bash
 cd core
-kzc --release
+kz cl --release
 ```
 
 ### 运行特定示例
 
 ```bash
 cd examples
-kzc hello_world.kz -o hello_world -L../core -L../utils
+kz cl hello_world.kz -o hello_world -L../core -L../utils
 ./hello_world
 ```
 
