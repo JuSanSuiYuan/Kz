@@ -56,9 +56,9 @@ kz cl examples/hello.kz -o hello
 ./hello
 ```
 
-## 包管理
+## 包管理kz mod
 
-使用`package.kz`（TOML格式）管理依赖：
+kz mod使用`package.kz`（TOML格式）管理依赖：
 
 ```toml
 [package]
